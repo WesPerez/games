@@ -913,7 +913,7 @@ let matchState = { cards: [], flipped: [], matched: [], totalPairs: 0 };
 let catState = { round: 0, totalRounds: 0, timerId: null, timeLeft: 0, correctStreak: 0 };
 
 // Symbol input state
-let symbolState = { round: 0, totalRounds: 0, timerId: null, timeLeft: 0 };
+let symbolState = { round: 0, totalRounds: 0, timerId: null, timeLeft: 0, currentCompound: null };
 
 // Table state
 let tableState = { shuffledOrder: [], currentIndex: 0, startTime: 0, errors: 0, revealed: [] };
@@ -951,22 +951,26 @@ function pick(arr, n) { return shuffle([...arr]).slice(0, n); }
 
 function fmtEl(formula) {
   return formula
+    .replace(/₀/g, '<sub>0</sub>')
+    .replace(/₁/g, '<sub>1</sub>')
     .replace(/₂/g, '<sub>2</sub>')
     .replace(/₃/g, '<sub>3</sub>')
     .replace(/₄/g, '<sub>4</sub>')
     .replace(/₅/g, '<sub>5</sub>')
     .replace(/₆/g, '<sub>6</sub>')
-    .replace(/₁/g, '<sub>1</sub>');
+    .replace(/₇/g, '<sub>7</sub>')
+    .replace(/₈/g, '<sub>8</sub>')
+    .replace(/₉/g, '<sub>9</sub>');
 }
 
 function fmtElText(formula) {
   return formula.replace(/₀/g,'0').replace(/₁/g,'1').replace(/₂/g,'2')
-    .replace(/₃/g,'3').replace(/₄/g,'4').replace(/₅/g,'5').replace(/₆/g,'6');
+    .replace(/₃/g,'3').replace(/₄/g,'4').replace(/₅/g,'5').replace(/₆/g,'6')
+    .replace(/₇/g,'7').replace(/₈/g,'8').replace(/₉/g,'9');
 }
 
 function normalizeFormula(raw) {
-  // Convert subscript digits → normal digits, then uppercase
-  return fmtElText(raw).toUpperCase();
+  return fmtElText(raw).replace(/\s/g,'').toUpperCase();
 }
 
 function showScreen(id) {
@@ -1049,10 +1053,8 @@ function startTimer(seconds, onTimeout) {
 }
 
 function hideTimer() {
-  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  clearAllTimers();
   if (window.timerId) { clearTimeout(window.timerId); window.timerId = null; }
-  if (puzzState.timerId) { clearTimeout(puzzState.timerId); puzzState.timerId = null; }
-  if (symbolState.timerId) { clearTimeout(symbolState.timerId); symbolState.timerId = null; }
   document.getElementById('timerWrap').style.display = 'none';
 }
 
@@ -1277,7 +1279,8 @@ function renderEquationQuestion() {
 
   // Coefficient options: 1-9 (multiple of the real coefficients)
   const uniqueCoeffs = [...new Set(eq.e)];
-  const options = shuffle([...new Set([...uniqueCoeffs, 1,2,3,4,5,6])]).slice(0, 6);
+  const distractors = [1,2,3,4,5,6,7,8].filter(d => !uniqueCoeffs.includes(d));
+  const options = [...uniqueCoeffs, ...shuffle(distractors)].slice(0, Math.max(6, uniqueCoeffs.length));
 
   document.getElementById('extraDisplay').innerHTML = eqHTML;
 
@@ -1378,13 +1381,24 @@ function nextEquation() {
   }
 }
 
-function showFeedback(isCorrect, hint) {
+function showFeedback(isCorrect, formula, name, userAnswer) {
   const el = document.getElementById('answerFeedback');
+  const isEquation = lastMode === 'equation';
+  const msgText = isEquation
+    ? (isCorrect ? '配平正确！' : '配平错误！')
+    : (isCorrect ? '回答正确！' : '回答错误！');
+  let detail = '';
+  if (isEquation) {
+    detail = isCorrect ? '正确！' + formula : '答错了！正确系数：' + formula;
+  } else {
+    detail = fmtEl(formula) + (name ? '（' + name + '）' : '');
+    if (!isCorrect) detail += '<br>你输入了：' + (userAnswer || '(空)');
+  }
   el.innerHTML = `
     <div class="answer-feedback ${isCorrect ? 'correct-msg' : 'wrong-msg'}">
       <div class="emoji">${isCorrect ? '🎉' : '😢'}</div>
-      <div class="msg">${isCorrect ? '配平正确！' : '配平错误！'}</div>
-      <div class="detail">${isCorrect ? '正确！' + hint : '答错了！' + hint}</div>
+      <div class="msg">${msgText}</div>
+      <div class="detail">${detail}</div>
     </div>`;
 }
 
@@ -1510,6 +1524,7 @@ function renderSymbolRound() {
   // Pick a compound with a simple formula
   const compound = pick(COMPOUNDS.filter(c => c.f.length <= 5 && !c.f.includes('(')), 1)[0]
     || COMPOUNDS[randInt(0, COMPOUNDS.length - 1)];
+  symbolState.currentCompound = compound;
 
   document.getElementById('questionCounter').textContent = `第 ${symbolState.round}/${symbolState.totalRounds} 题`;
   document.getElementById('progressBar').style.width = `${((symbolState.round - 1) / symbolState.totalRounds) * 100}%`;
@@ -1547,10 +1562,7 @@ function submitSymbol(timeout = false) {
   hideTimer();
   clearTimeout(symbolState.timerId);
 
-  // Get compound from the displayed name
-  const displayEl = document.querySelector('.category-display');
-  const compoundName = displayEl ? displayEl.textContent.trim() : '';
-  const comp = COMPOUNDS.find(c => c.n === compoundName) || COMPOUNDS[symbolState.round - 1] || COMPOUNDS[0];
+  const comp = symbolState.currentCompound || COMPOUNDS[0];
   const inputEl = document.getElementById('symbolInput');
   const userRaw = inputEl ? inputEl.value : '';
   const userAnswer = normalizeFormula(userRaw.trim());
@@ -1577,16 +1589,6 @@ function submitSymbol(timeout = false) {
   `;
 }
 
-function showFeedback(isCorrect, formula, name, userAnswer) {
-  const el = document.getElementById('answerFeedback');
-  el.innerHTML = `
-    <div class="answer-feedback ${isCorrect ? 'correct-msg' : 'wrong-msg'}">
-      <div class="emoji">${isCorrect ? '🎉' : '😢'}</div>
-      <div class="msg">${isCorrect ? '配平正确！' : '配平错误！'}</div>
-      <div class="detail">${formula}${name != null && name !== '' ? '（' + name + '）' : ''}${!isCorrect ? '<br>你输入了：' + (userAnswer || '(空)') : ''}</div>
-    </div>`;
-}
-
 function nextSymbolRound() {
   if (symbolState.round >= symbolState.totalRounds) {
     showResult();
@@ -1601,7 +1603,6 @@ function nextSymbolRound() {
 function showResult() {
   clearAllTimers();
   showScreen('screenResult');
-  console.log('[DEBUG] showResult called', { scoreRight, scoreWrong, totalQuestions, lastMode });
 
   if (lastMode === 'match') totalQuestions = matchState.totalPairs;
   else if (lastMode === 'equation') totalQuestions = eqState.total;
@@ -1610,7 +1611,6 @@ function showResult() {
   else totalQuestions = 10;
 
   document.getElementById('resultCorrect').textContent = scoreRight;
-  console.log('[DEBUG] set resultWrong=', scoreWrong);
   document.getElementById('resultWrong').textContent = scoreWrong;
   document.getElementById('resultTotal').textContent = totalQuestions;
 
