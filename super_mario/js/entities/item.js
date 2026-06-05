@@ -37,6 +37,7 @@ class Item {
             case 'mushroom': return 'item_mushroom';
             case 'oneup': return 'item_oneup';
             case 'fire': return 'item_fireflower';
+            case 'ice': return 'item_iceflower';
             case 'star': return 'item_star';
             case 'coin_popup':
             case 'coin': {

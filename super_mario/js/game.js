@@ -1,4 +1,4 @@
-const GAME_STATE = { TITLE: 0, PLAYING: 1, DYING: 2, GAMEOVER: 3, LEVELCLEAR: 4, WIN: 5 };
+const GAME_STATE = { TITLE: 0, PLAYING: 1, DYING: 2, GAMEOVER: 3, LEVELCLEAR: 4, WIN: 5, PAUSED: 6, TRANSITION: 7 };
 const TILE = 16;
 
 class Game {
@@ -22,6 +22,13 @@ class Game {
         this.fireballs = []; this.shells = []; this.scorePopups = [];
         this.decorations = { bushes: [], hills: [], clouds: [] };
         this.pipes = [];
+        this.piranhaPlants = [];
+        this.lakitus = [];
+        this.hammerBros = [];
+        this.hammers = [];
+        this.particles = [];
+        this.waterTiles = [];
+        this.lavaTiles = [];
         this.levelW = 0; this.levelH = 0;
         this.time = 400; this.timeCounter = 0;
         this.stateTimer = 0;
@@ -31,11 +38,20 @@ class Game {
         this._prevInvincible = 0;
         this.currentLevelId = 1;
         this._pendingSaveData = null;
+        this.theme = 'overworld';
+        this.shakeAmount = 0;
+        this.shakeDecay = 0.9;
+        this.checkpoint = null;
         this._loadBuiltinLevel();
+        this._initInput();
+    }
+    _initInput() {
+        // Pause key is handled in update
     }
     _loadBuiltinLevel() {
         this.levelData = {
             levelId: 1, name: "World 1-1", timeLimit: 400, width: 210, height: 15,
+            theme: 'overworld',
             playerStart: { x: 48, y: 192 },
             platforms: [
                 { x: 0, y: 208, w: 3360, h: 32 },
@@ -89,21 +105,9 @@ class Game {
             ],
             flagpole: { x: 1600, y: 48 },
             decorations: {
-                bushes: [
-                    { x: 208, y: 192 },
-                    { x: 368, y: 192 },
-                    { x: 560, y: 192 }
-                ],
-                hills: [
-                    { x: 16, y: 192 },
-                    { x: 128, y: 192 },
-                    { x: 256, y: 192 }
-                ],
-                clouds: [
-                    { x: 48, y: 32 },
-                    { x: 160, y: 48 },
-                    { x: 320, y: 32 }
-                ]
+                bushes: [{ x: 208, y: 192 }, { x: 368, y: 192 }, { x: 560, y: 192 }],
+                hills: [{ x: 16, y: 192 }, { x: 128, y: 192 }, { x: 256, y: 192 }],
+                clouds: [{ x: 48, y: 32 }, { x: 160, y: 48 }, { x: 320, y: 32 }]
             }
         };
     }
@@ -115,13 +119,30 @@ class Game {
         this.time = data.timeLimit || 400;
         this.timeCounter = 0;
         this.levelLoaded = true;
-        this.audio.playBGM('overworld');
+        this.theme = data.theme || 'overworld';
+        this.checkpoint = null;
+        if (data.checkpoint) {
+            this.checkpoint = { x: data.checkpoint.x, y: data.checkpoint.y, active: false };
+        }
+        this._playThemeMusic();
+    }
+    _playThemeMusic() {
+        if (this.theme === 'underground') {
+            this.audio.playBGM('underground');
+        } else if (this.theme === 'castle') {
+            this.audio.playBGM('castle');
+        } else {
+            this.audio.playBGM('overworld');
+        }
     }
     _buildLevel(data) {
         this.blocks = []; this.enemies = []; this.items = []; this.coins = [];
         this.groundTiles = []; this.flagpole = null;
         this.fireballs = []; this.shells = []; this.scorePopups = [];
-        this.pipes = [];
+        this.pipes = []; this.piranhaPlants = []; this.lakitus = [];
+        this.hammerBros = []; this.hammers = [];
+        this.particles = [];
+        this.waterTiles = []; this.lavaTiles = [];
         this.decorations = { bushes: [], hills: [], clouds: [] };
         this.levelW = (data.width || 210) * TILE;
         this.levelH = (data.height || 15) * TILE;
@@ -131,7 +152,7 @@ class Game {
                     for (let py = 0; py < p.h; py += TILE) {
                         this.groundTiles.push({
                             x: p.x + px, y: p.y + py,
-                            w: TILE, h: TILE, type: 1
+                            w: TILE, h: TILE, type: p.type || 1
                         });
                     }
                 }
@@ -144,7 +165,16 @@ class Game {
         }
         if (data.enemies) {
             for (const e of data.enemies) {
-                this.enemies.push(new Enemy(e.x, e.y - 16, e.type));
+                const ex = e.x, ey = e.y - 16;
+                if (e.type === 'piranha') {
+                    this.piranhaPlants.push(new PiranhaPlant(ex, ey, ey));
+                } else if (e.type === 'lakitu') {
+                    this.lakitus.push(new Lakitu(ex, ey, e.patrolLeft || 0, e.patrolRight || this.levelW));
+                } else if (e.type === 'hammerbro') {
+                    this.hammerBros.push(new HammerBro(ex, ey, e.patrolLeft || ex - 64, e.patrolRight || ex + 64));
+                } else {
+                    this.enemies.push(new Enemy(ex, ey, e.type));
+                }
             }
         }
         if (data.coins) {
@@ -164,7 +194,28 @@ class Game {
                 }
                 this.groundTiles.push({ x: p.x - TILE, y: p.y, w: TILE, h: TILE, type: 1 });
                 this.groundTiles.push({ x: p.x + TILE * 2, y: p.y, w: TILE, h: TILE, type: 1 });
-                this.pipes.push({ x: p.x, y: p.y, height: p.height, dest: p.dest || null });
+                this.pipes.push({ x: p.x, y: p.y, height: p.height, dest: p.dest || null, hasPlant: p.hasPlant || false });
+                if (p.hasPlant) {
+                    this.piranhaPlants.push(new PiranhaPlant(p.x + TILE / 2, p.y, p.y));
+                }
+            }
+        }
+        if (data.water) {
+            for (const w of data.water) {
+                for (let wx = 0; wx < w.w; wx += TILE) {
+                    for (let wy = 0; wy < w.h; wy += TILE) {
+                        this.waterTiles.push({ x: w.x + wx, y: w.y + wy, w: TILE, h: TILE });
+                    }
+                }
+            }
+        }
+        if (data.lava) {
+            for (const l of data.lava) {
+                for (let lx = 0; lx < l.w; lx += TILE) {
+                    for (let ly = 0; ly < l.h; ly += TILE) {
+                        this.lavaTiles.push({ x: l.x + lx, y: l.y + ly, w: TILE, h: TILE });
+                    }
+                }
             }
         }
         if (data.decorations) {
@@ -176,14 +227,15 @@ class Game {
         }
         const ps = data.playerStart || { x: 48, y: 192 };
         this.mario = new Mario(ps.x, ps.y - 16);
-        this.mario._onFireball = (fb) => {
+        this.mario._onFireball = (proj) => {
             if (this.fireballs.length < 2) {
-                this.fireballs.push(fb);
+                this.fireballs.push(proj);
                 this.audio.playSound('fireball');
             }
         };
         this.mario._onJump = () => {
             this.audio.playSound('jump');
+            this._spawnJumpDust(this.mario.x + this.mario.w / 2, this.mario.y + this.mario.h);
         };
         if (this._pendingSaveData) {
             this.mario.lives = this._pendingSaveData.lives || 3;
@@ -193,9 +245,72 @@ class Game {
         }
         this.camera.follow(this.mario);
     }
+    _spawnJumpDust(x, y) {
+        for (let i = 0; i < 3; i++) {
+            this.particles.push({
+                x: x + (Math.random() - 0.5) * 8,
+                y: y,
+                vx: (Math.random() - 0.5) * 1.5,
+                vy: -Math.random() * 2,
+                life: 15 + Math.random() * 10,
+                type: 'dust',
+                alpha: 1
+            });
+        }
+    }
+    _spawnCoinSparkle(x, y) {
+        for (let i = 0; i < 4; i++) {
+            this.particles.push({
+                x: x + Math.random() * 16,
+                y: y + Math.random() * 8,
+                vx: (Math.random() - 0.5) * 2,
+                vy: -Math.random() * 3 - 1,
+                life: 20 + Math.random() * 10,
+                type: 'sparkle',
+                alpha: 1
+            });
+        }
+    }
+    _spawnSquishParticles(x, y) {
+        for (let i = 0; i < 4; i++) {
+            this.particles.push({
+                x: x + (Math.random() - 0.5) * 8,
+                y: y,
+                vx: (Math.random() - 0.5) * 3,
+                vy: -Math.random() * 3 - 1,
+                life: 20 + Math.random() * 10,
+                type: 'squish',
+                alpha: 1
+            });
+        }
+    }
+    _spawnPowerUpGlow(x, y) {
+        for (let i = 0; i < 6; i++) {
+            this.particles.push({
+                x: x + Math.random() * 16,
+                y: y + Math.random() * 16,
+                vx: (Math.random() - 0.5) * 1,
+                vy: -Math.random() * 2 - 2,
+                life: 30 + Math.random() * 15,
+                type: 'glow',
+                alpha: 1
+            });
+        }
+    }
+    triggerShake(amount) {
+        this.shakeAmount = Math.max(this.shakeAmount, amount);
+    }
     update() {
         this.input.update();
         this.frameCount++;
+
+        // Update shake
+        if (this.shakeAmount > 0.1) {
+            this.shakeAmount *= this.shakeDecay;
+        } else {
+            this.shakeAmount = 0;
+        }
+
         if (this.state === GAME_STATE.TITLE) {
             if (this.input.justPressed('jump') || this.input.justPressed('enter')) {
                 this.audio.init();
@@ -215,6 +330,23 @@ class Game {
             }
             return;
         }
+        if (this.state === GAME_STATE.TRANSITION) {
+            this.stateTimer++;
+            if (this.stateTimer > 90) {
+                this.startLevel();
+            }
+            return;
+        }
+        // Pause toggle
+        if (this.input.justPressed('pause') && (this.state === GAME_STATE.PLAYING || this.state === GAME_STATE.PAUSED)) {
+            if (this.state === GAME_STATE.PLAYING) {
+                this.state = GAME_STATE.PAUSED;
+            } else {
+                this.state = GAME_STATE.PLAYING;
+            }
+            return;
+        }
+        if (this.state === GAME_STATE.PAUSED) return;
         if (this.state === GAME_STATE.LEVELCLEAR) {
             this.stateTimer++;
             if (this.stateTimer <= 60 && this.stateTimer % 2 === 0 && this.time > 0) {
@@ -234,7 +366,8 @@ class Game {
                 const nextLevel = this.levelMgr.getNextLevel();
                 if (nextLevel >= 0) {
                     this.currentLevelId = nextLevel + 1;
-                    this.startLevel();
+                    this.state = GAME_STATE.TRANSITION;
+                    this.stateTimer = 0;
                 } else {
                     this.state = GAME_STATE.TITLE;
                     this.stateTimer = 0;
@@ -258,7 +391,7 @@ class Game {
                     this.stateTimer = 0;
                     this.audio.playSound('gameover');
                 } else {
-                    this.startLevel();
+                    this._respawnMario();
                 }
             }
             return;
@@ -266,9 +399,16 @@ class Game {
         this.mario.isGrounded = false;
         this.mario.update(this.input, this.physics);
         if (this.mario.invincibleTimer === 0 && this._prevInvincible > 0) {
-            this.audio.playBGM('overworld');
+            this._playThemeMusic();
         }
         this._prevInvincible = this.mario.invincibleTimer;
+
+        // Checkpoint
+        if (this.checkpoint && !this.checkpoint.active && this.mario.x > this.checkpoint.x) {
+            this.checkpoint.active = true;
+            this.scorePopups.push(new ScorePopup(this.checkpoint.x, this.checkpoint.y - 16, 'CHECK'));
+        }
+
         this._handleGroundCollisions();
         this._handleBlockCollisions();
         this._handleEnemyCollisions();
@@ -278,6 +418,12 @@ class Game {
         this._handlePipeTransport();
         this._handleFireballs();
         this._handleShells();
+        this._handlePiranhaPlants();
+        this._handleLakitus();
+        this._handleHammerBros();
+        this._handleHammers();
+        this._handleWaterLava();
+
         for (const e of this.enemies) {
             if (!e.isAlive) { e.update(this.physics); continue; }
             e.isGrounded = false;
@@ -295,11 +441,20 @@ class Game {
         }
         for (const b of this.blocks) b.update();
         for (const pop of this.scorePopups) pop.update();
+        for (const p of this.particles) {
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vy += 0.1;
+            p.life--;
+            p.alpha = Math.max(0, p.life / 30);
+        }
         this.items = this.items.filter(i => i.isAlive || i.type === 'coin_popup');
         this.fireballs = this.fireballs.filter(f => f.isAlive);
         this.shells = this.shells.filter(s => s.isAlive);
         this.scorePopups = this.scorePopups.filter(p => p.isAlive);
         this.enemies = this.enemies.filter(e => e.isAlive || e.squishTimer < 30);
+        this.particles = this.particles.filter(p => p.life > 0);
+        this.hammers = this.hammers.filter(h => h.isAlive);
         if (this.mario.y > this.levelH + 32) {
             this.mario.die(this.audio);
         }
@@ -312,6 +467,35 @@ class Game {
             }
         }
         this.camera.update(this.levelW, this.levelH);
+    }
+    _respawnMario() {
+        this.fireballs = []; this.shells = []; this.hammers = [];
+        this.particles = [];
+        this.piranhaPlants = [];
+        this.lakitus = [];
+        this.hammerBros = [];
+        this.audio.stopBGM();
+        const data = this.levelData;
+        const ps = this.checkpoint && this.checkpoint.active ? this.checkpoint : (data.playerStart || { x: 48, y: 192 });
+        this.mario = new Mario(ps.x, ps.y - 16);
+        this.mario._onFireball = (proj) => {
+            if (this.fireballs.length < 2) {
+                this.fireballs.push(proj);
+                this.audio.playSound('fireball');
+            }
+        };
+        this.mario._onJump = () => {
+            this.audio.playSound('jump');
+            this._spawnJumpDust(this.mario.x + this.mario.w / 2, this.mario.y + this.mario.h);
+        };
+        if (this._pendingSaveData) {
+            this.mario.lives = this._pendingSaveData.lives || 3;
+            this.mario.score = this._pendingSaveData.score || 0;
+            this.mario.coins = this._pendingSaveData.coins || 0;
+        }
+        this.camera.follow(this.mario);
+        this.state = GAME_STATE.PLAYING;
+        this._playThemeMusic();
     }
     _saveProgress() {
         if (this.mario) {
@@ -362,6 +546,8 @@ class Game {
             b.break();
             this.audio.playSound('brick');
             m.addCoin(this.audio);
+            this.triggerShake(2);
+            this._spawnBrickParticles(b.x, b.y);
         } else if (b.type === 3 && !b.isUsed) {
             b.bump();
             b.isUsed = true;
@@ -370,11 +556,15 @@ class Game {
             if (content === 'coin') {
                 this.items.push(new Item(b.x, b.y, 'coin_popup'));
                 m.addCoin(this.audio);
+                this._spawnCoinSparkle(b.x, b.y);
             } else if (content === 'mushroom') {
                 this.items.push(new Item(b.x, b.y, 'mushroom'));
                 this.audio.playSound('bump');
             } else if (content === 'fire') {
                 this.items.push(new Item(b.x, b.y, 'fire'));
+                this.audio.playSound('bump');
+            } else if (content === 'ice') {
+                this.items.push(new Item(b.x, b.y, 'ice'));
                 this.audio.playSound('bump');
             } else if (content === 'star') {
                 this.items.push(new Item(b.x, b.y, 'star'));
@@ -388,6 +578,16 @@ class Game {
             this.audio.playSound('bump');
         } else if (b.type === 5) {
             this.audio.playSound('bump');
+        }
+    }
+    _spawnBrickParticles(x, y) {
+        for (let i = 0; i < 4; i++) {
+            this.particles.push({
+                x: x + (i % 2) * 8, y: y + Math.floor(i / 2) * 8,
+                vx: (i % 2 === 0 ? -2 : 2) + Math.random() * 2 - 1,
+                vy: -4 - Math.random() * 3,
+                life: 30, type: 'brick', alpha: 1
+            });
         }
     }
     _handleEnemyGroundCollision(e) {
@@ -434,8 +634,19 @@ class Game {
         const m = this.mario;
         if (m.invincibleTimer > 0 || m.isDead || m.isWinning) return;
         for (const e of this.enemies) {
-            if (!e.isAlive) continue;
+            if (!e.isAlive && !e.frozen) continue;
             if (!this.physics.checkAABB(m, e)) continue;
+            if (e.frozen) {
+                e.isAlive = false;
+                e.squishTimer = 0;
+                e.frozen = false;
+                this._spawnSquishParticles(e.x, e.y);
+                m.vy = -5;
+                m.score += 100;
+                this.scorePopups.push(new ScorePopup(e.x, e.y, 100));
+                this.audio.playSound('stomp');
+                continue;
+            }
             if (m.vy > 0 && m.y + m.h - e.y < 10) {
                 const shellResult = e.squash(this.audio);
                 m.vy = -5;
@@ -451,8 +662,11 @@ class Game {
                 } else {
                     this.scorePopups.push(new ScorePopup(e.x, e.y, stompScore));
                 }
+                this._spawnSquishParticles(e.x, e.y);
                 if (shellResult === 'shell') {
-                    this.shells.push(new KoopaShell(e.x, e.y + 8));
+                    this.shells.push(new KoopaShell(e.x, e.y + 8, 'koopa'));
+                } else if (shellResult === 'buzzy_shell') {
+                    this.shells.push(new KoopaShell(e.x, e.y + 8, 'buzzy'));
                 }
             } else {
                 if (m.takeDamage(this.audio)) {
@@ -469,13 +683,19 @@ class Game {
             if (!this.physics.checkAABB(m, item)) continue;
             if (item.type === 'mushroom') {
                 m.powerUp('mushroom', this.audio);
+                this._spawnPowerUpGlow(item.x, item.y);
             } else if (item.type === 'fire') {
                 m.powerUp('fire', this.audio);
+                this._spawnPowerUpGlow(item.x, item.y);
+            } else if (item.type === 'ice') {
+                m.powerUp('ice', this.audio);
+                this._spawnPowerUpGlow(item.x, item.y);
             } else if (item.type === 'star') {
                 m.invincibleTimer = 600;
                 m.score += 1000;
                 this.audio.playStarMusic();
                 this.audio.playSound('powerup');
+                this._spawnPowerUpGlow(item.x, item.y);
             } else if (item.type === 'oneup') {
                 m.lives++;
                 this.audio.playSound('oneup');
@@ -491,6 +711,7 @@ class Game {
             if (this.physics.checkAABB(m, c)) {
                 c.collected = true;
                 m.addCoin(this.audio);
+                this._spawnCoinSparkle(c.x, c.y);
             }
         }
     }
@@ -498,7 +719,7 @@ class Game {
         if (!this.flagpole || this.mario.isWinning || this.mario.isDead) return;
         const m = this.mario;
         const fp = this.flagpole;
-        if (m.x + m.w > fp.x && m.x < fp.x + TILE && m.y < this.levelH - TILE * 3) {
+        if (m.x + m.w > fp.x - 4 && m.x < fp.x + TILE + 4 && m.y < this.levelH - TILE * 3) {
             m.isWinning = true;
             m.vx = 0;
             m.vy = 0;
@@ -550,12 +771,28 @@ class Game {
             for (const e of this.enemies) {
                 if (!e.isAlive) continue;
                 if (!this.physics.checkAABB(fb, e)) continue;
-                e.isAlive = false;
-                e.squishTimer = 0;
-                fb.isAlive = false;
-                if (this.mario) {
-                    this.mario.score += 200;
-                    this.scorePopups.push(new ScorePopup(e.x, e.y, 200));
+                if (e.type === 'buzzy' && fb.type === 'fire') {
+                    fb.bounceOnWall();
+                    continue;
+                }
+                if (fb.type === 'ice') {
+                    e.frozen = true;
+                    e.frozenTimer = 180;
+                    e.vx = 0;
+                    e.vy = 0;
+                    fb.isAlive = false;
+                    if (this.mario) {
+                        this.mario.score += 100;
+                        this.scorePopups.push(new ScorePopup(e.x, e.y, 100));
+                    }
+                } else {
+                    e.isAlive = false;
+                    e.squishTimer = 0;
+                    fb.isAlive = false;
+                    if (this.mario) {
+                        this.mario.score += 200;
+                        this.scorePopups.push(new ScorePopup(e.x, e.y, 200));
+                    }
                 }
             }
         }
@@ -610,18 +847,125 @@ class Game {
             }
         }
     }
+    _handlePiranhaPlants() {
+        const m = this.mario;
+        for (const pp of this.piranhaPlants) {
+            pp.update(m);
+            if (!pp.isAlive || pp.state === 'hidden') continue;
+            if (m && !m.isDead && m.invincibleTimer <= 0) {
+                if (this.physics.checkAABB(m, pp)) {
+                    m.takeDamage(this.audio);
+                }
+            }
+        }
+    }
+    _handleLakitus() {
+        const m = this.mario;
+        for (const l of this.lakitus) {
+            l.update(this.physics);
+            if (m && !m.isDead && m.invincibleTimer <= 0 && l.isAlive) {
+                if (this.physics.checkAABB(m, l)) {
+                    if (m.vy > 0 && m.y + m.h - l.y < 10) {
+                        l.squash(this.audio);
+                        m.vy = -5;
+                        m.score += 400;
+                        this.scorePopups.push(new ScorePopup(l.x, l.y, 400));
+                        this._spawnSquishParticles(l.x, l.y);
+                    } else {
+                        m.takeDamage(this.audio);
+                    }
+                }
+            }
+        }
+        this.lakitus = this.lakitus.filter(l => l.isAlive);
+    }
+    _handleHammerBros() {
+        const m = this.mario;
+        for (const hb of this.hammerBros) {
+            if (!hb.isAlive) continue;
+            hb.isGrounded = false;
+            hb.update(this.physics);
+            this._handleEnemyGroundCollision(hb);
+            this._handleEnemyBlockCollision(hb);
+            if (m && !m.isDead && m.invincibleTimer <= 0) {
+                if (this.physics.checkAABB(m, hb)) {
+                    if (m.vy > 0 && m.y + m.h - hb.y < 10) {
+                        hb.squash(this.audio);
+                        m.vy = -5;
+                        m.score += 500;
+                        this.scorePopups.push(new ScorePopup(hb.x, hb.y, 500));
+                        this._spawnSquishParticles(hb.x, hb.y);
+                    } else {
+                        m.takeDamage(this.audio);
+                    }
+                }
+            }
+        }
+        this.hammerBros = this.hammerBros.filter(hb => hb.isAlive);
+    }
+    _handleHammers() {
+        const m = this.mario;
+        for (const hm of this.hammers) {
+            if (!hm.isAlive) continue;
+            hm.isGrounded = false;
+            hm.update(this.physics);
+            for (const g of this.groundTiles) {
+                if (!this.physics.checkAABB(hm, g)) continue;
+                hm.isAlive = false;
+            }
+            if (m && !m.isDead && m.invincibleTimer <= 0) {
+                if (this.physics.checkAABB(m, hm)) {
+                    m.takeDamage(this.audio);
+                    hm.isAlive = false;
+                }
+            }
+        }
+    }
+    _handleWaterLava() {
+        const m = this.mario;
+        if (!m || m.isDead) return;
+        for (const w of this.waterTiles) {
+            if (this.physics.checkAABB(m, w)) {
+                m.vy = -3;
+                m.isGrounded = false;
+            }
+        }
+        for (const l of this.lavaTiles) {
+            if (this.physics.checkAABB(m, l)) {
+                m.die(this.audio);
+                return;
+            }
+        }
+    }
     render() {
-        this.ctx.fillStyle = '#5c94fc';
+        const bgColor = this.theme === 'underground' ? '#000000' :
+                         this.theme === 'castle' ? '#303030' : '#5c94fc';
+        this.ctx.fillStyle = bgColor;
         this.ctx.fillRect(0, 0, this.W, this.H);
+
         if (this.state === GAME_STATE.TITLE) { this._drawTitle(); return; }
         if (this.state === GAME_STATE.GAMEOVER) { this._drawGameOver(); return; }
+        if (this.state === GAME_STATE.TRANSITION) { this._drawTransition(); return; }
         if (this.state === GAME_STATE.WIN) { this._drawWin(); return; }
+
+        // Apply screen shake
+        let shakeX = 0, shakeY = 0;
+        if (this.shakeAmount > 0.1) {
+            shakeX = (Math.random() - 0.5) * this.shakeAmount * 2;
+            shakeY = (Math.random() - 0.5) * this.shakeAmount * 2;
+            this.ctx.save();
+            this.ctx.translate(shakeX, shakeY);
+        }
+
         this._drawBackground();
         this._drawDecorations();
+        this._drawWaterLava();
         for (const g of this.groundTiles) {
             if (!this.camera.isVisible(g.x, g.y, g.w, g.h)) continue;
             const s = this.camera.toScreen(g.x, g.y);
-            const sprite = getSprite('block_ground');
+            const spriteName = this.theme === 'underground' ? 'block_underground' :
+                               this.theme === 'castle' ? 'block_castle' : 'block_ground';
+            const sprite = getSprite(spriteName);
             if (sprite) {
                 this.ctx.drawImage(sprite, s.x, s.y);
             } else {
@@ -633,15 +977,29 @@ class Game {
         if (this.flagpole) {
             this._drawFlagpole();
         }
+        if (this.checkpoint && !this.checkpoint.active) {
+            this._drawCheckpoint();
+        }
         for (const b of this.blocks) b.draw(this.ctx, this.camera);
         for (const c of this.coins) c.draw(this.ctx, this.camera);
         for (const e of this.enemies) e.draw(this.ctx, this.camera);
+        for (const pp of this.piranhaPlants) pp.draw(this.ctx, this.camera);
+        for (const l of this.lakitus) l.draw(this.ctx, this.camera);
+        for (const hb of this.hammerBros) hb.draw(this.ctx, this.camera);
         for (const i of this.items) i.draw(this.ctx, this.camera);
         for (const fb of this.fireballs) fb.draw(this.ctx, this.camera);
         for (const shell of this.shells) shell.draw(this.ctx, this.camera);
+        for (const hm of this.hammers) hm.draw(this.ctx, this.camera);
         for (const pop of this.scorePopups) pop.draw(this.ctx, this.camera);
+        this._drawParticles();
         if (this.mario) this.mario.draw(this.ctx, this.camera);
+        if (this.shakeAmount > 0.1) {
+            this.ctx.restore();
+        }
         this._drawUI();
+        if (this.state === GAME_STATE.PAUSED) {
+            this._drawPause();
+        }
         if (this.state === GAME_STATE.LEVELCLEAR) {
             this.ctx.fillStyle = '#fff';
             this.ctx.font = '12px "Press Start 2P", monospace';
@@ -651,28 +1009,37 @@ class Game {
     }
     _drawBackground() {
         const cx = this.camera.x;
-        for (let i = 0; i < 5; i++) {
-            const bx = (80 + i * 180 - cx * 0.1) % (this.W + 100) - 50;
-            const by = 40 + (i % 3) * 20;
-            const sprite = getSprite('cloud');
-            if (sprite) {
-                this.ctx.drawImage(sprite, bx, by);
-            } else {
-                this.ctx.fillStyle = 'rgba(255,255,255,0.8)';
-                this.ctx.beginPath();
-                this.ctx.ellipse(bx, by, 28, 10, 0, 0, Math.PI * 2);
-                this.ctx.fill();
-                this.ctx.beginPath();
-                this.ctx.ellipse(bx + 18, by - 4, 18, 8, 0, 0, Math.PI * 2);
-                this.ctx.fill();
+        // Parallax layers
+        const layers = [
+            { speed: 0.1, count: 6, yBase: 40, yJitter: 20, sprite: 'cloud', w: 60, h: 20 },
+            { speed: 0.3, count: 4, yBase: 100, yJitter: 10, sprite: 'cloud', w: 40, h: 15 },
+        ];
+        if (this.theme === 'overworld') {
+            for (const layer of layers) {
+                for (let i = 0; i < layer.count; i++) {
+                    const bx = ((layer.w * i * 2 + i * 80) - cx * layer.speed) % (this.W + 200) - 100;
+                    const by = layer.yBase + (i % 3) * layer.yJitter;
+                    const sprite = getSprite(layer.sprite);
+                    if (sprite) {
+                        this.ctx.drawImage(sprite, bx, by);
+                    }
+                }
             }
+        } else if (this.theme === 'underground') {
+            // Underground has no clouds, just dark sky
+            this.ctx.fillStyle = '#000';
+            this.ctx.fillRect(0, 0, this.W, this.H);
+        } else if (this.theme === 'castle') {
+            // Castle has dark sky with occasional background elements
+            this.ctx.fillStyle = '#303030';
+            this.ctx.fillRect(0, 0, this.W, this.H);
         }
     }
     _drawDecorations() {
         const bushSprite = getSprite('bush');
         const hillSprite = getSprite('hill');
         const cloudSprite = getSprite('cloud');
-        if (cloudSprite) {
+        if (cloudSprite && this.theme === 'overworld') {
             for (const c of this.decorations.clouds) {
                 const s = this.camera.toScreen(c.x, c.y);
                 if (this.camera.isVisible(c.x, c.y, 16, 16)) {
@@ -680,7 +1047,7 @@ class Game {
                 }
             }
         }
-        if (hillSprite) {
+        if (hillSprite && this.theme === 'overworld') {
             for (const h of this.decorations.hills) {
                 const s = this.camera.toScreen(h.x, h.y);
                 if (this.camera.isVisible(h.x, h.y, 16, 16)) {
@@ -688,13 +1055,57 @@ class Game {
                 }
             }
         }
-        if (bushSprite) {
+        if (bushSprite && this.theme !== 'castle') {
             for (const b of this.decorations.bushes) {
                 const s = this.camera.toScreen(b.x, b.y);
                 if (this.camera.isVisible(b.x, b.y, 16, 16)) {
                     this.ctx.drawImage(bushSprite, s.x, s.y);
                 }
             }
+        }
+    }
+    _drawWaterLava() {
+        for (const w of this.waterTiles) {
+            if (!this.camera.isVisible(w.x, w.y, w.w, w.h)) continue;
+            const s = this.camera.toScreen(w.x, w.y);
+            const sprite = getSprite('water_tile');
+            if (sprite) {
+                this.ctx.drawImage(sprite, s.x, s.y);
+            } else {
+                this.ctx.fillStyle = '#2060e0';
+                this.ctx.fillRect(s.x, s.y, TILE, TILE);
+            }
+        }
+        for (const l of this.lavaTiles) {
+            if (!this.camera.isVisible(l.x, l.y, l.w, l.h)) continue;
+            const s = this.camera.toScreen(l.x, l.y);
+            const sprite = getSprite('lava_tile');
+            if (sprite) {
+                this.ctx.drawImage(sprite, s.x, s.y);
+            } else {
+                this.ctx.fillStyle = '#e04010';
+                this.ctx.fillRect(s.x, s.y, TILE, TILE);
+            }
+        }
+    }
+    _drawParticles() {
+        for (const p of this.particles) {
+            const s = this.camera.toScreen(p.x, p.y);
+            this.ctx.save();
+            this.ctx.globalAlpha = p.alpha;
+            let spriteName = null;
+            if (p.type === 'brick') spriteName = 'brick_particle';
+            else if (p.type === 'sparkle') spriteName = 'coin_sparkle';
+            else if (p.type === 'dust') spriteName = 'dust_particle';
+            else if (p.type === 'squish') spriteName = 'squish_particle';
+            else if (p.type === 'glow') spriteName = 'powerup_glow';
+            if (spriteName) {
+                const sprite = getSprite(spriteName);
+                if (sprite) {
+                    this.ctx.drawImage(sprite, s.x, s.y);
+                }
+            }
+            this.ctx.restore();
         }
     }
     _drawPipes() {
@@ -741,6 +1152,19 @@ class Game {
             this.ctx.drawImage(castleSprite, sCastle.x, sCastle.y);
         }
     }
+    _drawCheckpoint() {
+        const cp = this.checkpoint;
+        const s = this.camera.toScreen(cp.x, cp.y);
+        const sprite = getSprite('checkpoint');
+        if (sprite) {
+            this.ctx.drawImage(sprite, s.x, s.y);
+        } else {
+            this.ctx.fillStyle = '#f80';
+            this.ctx.fillRect(s.x + 7, s.y, 2, 16);
+            this.ctx.fillStyle = '#ff0';
+            this.ctx.fillRect(s.x + 1, s.y + 2, 6, 6);
+        }
+    }
     _drawUI() {
         if (!this.mario) return;
         this.ctx.fillStyle = '#fff';
@@ -748,9 +1172,15 @@ class Game {
         this.ctx.textAlign = 'left';
         this.ctx.fillText('MARIO', 8, 16);
         this.ctx.fillText(String(this.mario.score).padStart(6, '0'), 8, 28);
+
+        // Coin counter with animation
         this.ctx.textAlign = 'center';
         const coinSprite = getSprite('item_coin_0');
-        if (coinSprite) {
+        const coinFrame = Math.floor(this.frameCount / 8) % 4;
+        const animCoinSprite = getSprite('item_coin_' + coinFrame);
+        if (animCoinSprite) {
+            this.ctx.drawImage(animCoinSprite, 76, 18, 8, 10);
+        } else if (coinSprite) {
             this.ctx.drawImage(coinSprite, 76, 18, 8, 10);
         } else {
             this.ctx.fillStyle = '#f5d442';
@@ -758,15 +1188,54 @@ class Game {
         }
         this.ctx.fillStyle = '#fff';
         this.ctx.fillText('x' + String(this.mario.coins).padStart(2, '0'), 92, 28);
+
+        // World display
+        const levelName = this.levelData ? this.levelData.name || '1-1' : '1-1';
         this.ctx.fillText('WORLD', 152, 16);
-        this.ctx.fillText('1-1', 152, 28);
+        this.ctx.fillText(levelName, 152, 28);
+
         this.ctx.textAlign = 'right';
         this.ctx.fillText('TIME', 248, 16);
         this.ctx.fillText(String(Math.max(0, Math.floor(this.time))), 248, 28);
+
+        // Lives display as Mario heads
+        this.ctx.textAlign = 'left';
+        const headSprite = getSprite('mario_head');
+        for (let i = 0; i < Math.min(this.mario.lives, 5); i++) {
+            const hx = 8 + i * 12;
+            const hy = 34;
+            if (headSprite) {
+                this.ctx.drawImage(headSprite, hx, hy);
+            } else {
+                this.ctx.fillStyle = '#e52521';
+                this.ctx.fillRect(hx + 2, hy, 6, 4);
+                this.ctx.fillStyle = '#fca044';
+                this.ctx.fillRect(hx + 2, hy + 4, 6, 3);
+            }
+        }
+        if (this.mario.lives > 5) {
+            this.ctx.fillStyle = '#fff';
+            this.ctx.fillText('x' + this.mario.lives, 8 + 5 * 12 + 4, 42);
+        }
     }
     _drawTitle() {
+        // Animated background
         this.ctx.fillStyle = '#5c94fc';
         this.ctx.fillRect(0, 0, this.W, this.H);
+        for (let i = 0; i < 6; i++) {
+            const bx = ((80 + i * 180 + this.frameCount * 0.2) % (this.W + 200)) - 100;
+            const by = 40 + (i % 3) * 20;
+            const sprite = getSprite('cloud');
+            if (sprite) {
+                this.ctx.drawImage(sprite, bx, by);
+            }
+        }
+        // Ground strip
+        this.ctx.fillStyle = '#c84c09';
+        this.ctx.fillRect(0, this.H - 32, this.W, 32);
+        this.ctx.fillStyle = '#e09050';
+        this.ctx.fillRect(0, this.H - 32, this.W, 2);
+
         const marioSprite = getSprite('mario_big_stand');
         if (marioSprite) {
             this.ctx.drawImage(marioSprite, this.W / 2 - 8, 90, 16, 32);
@@ -791,6 +1260,18 @@ class Game {
         this.ctx.font = '7px "Press Start 2P", monospace';
         this.ctx.fillText('Arrows/WASD: Move', this.W / 2, 180);
         this.ctx.fillText('Space/Z: Jump  X: Fire', this.W / 2, 196);
+        this.ctx.fillText('P: Pause', this.W / 2, 210);
+    }
+    _drawTransition() {
+        this.ctx.fillStyle = '#000';
+        this.ctx.fillRect(0, 0, this.W, this.H);
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = '10px "Press Start 2P", monospace';
+        this.ctx.textAlign = 'center';
+        const nextLevel = this.levelData ? (this.levelData.levelId + 1) : 2;
+        this.ctx.fillText('WORLD ' + nextLevel, this.W / 2, this.H / 2 - 10);
+        this.ctx.font = '8px "Press Start 2P", monospace';
+        this.ctx.fillText('GET READY!', this.W / 2, this.H / 2 + 10);
     }
     _drawGameOver() {
         this.ctx.fillStyle = '#000';
@@ -810,6 +1291,16 @@ class Game {
         this.ctx.fillStyle = '#fff';
         this.ctx.font = '10px "Press Start 2P", monospace';
         this.ctx.fillText('SCORE: ' + (this.mario ? this.mario.score : 0), this.W / 2, 120);
+    }
+    _drawPause() {
+        this.ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        this.ctx.fillRect(0, 0, this.W, this.H);
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = '14px "Press Start 2P", monospace';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText('PAUSED', this.W / 2, this.H / 2 - 10);
+        this.ctx.font = '8px "Press Start 2P", monospace';
+        this.ctx.fillText('Press P to resume', this.W / 2, this.H / 2 + 10);
     }
     loop() {
         this.update();

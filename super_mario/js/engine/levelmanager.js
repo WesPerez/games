@@ -2,7 +2,7 @@ class LevelManager {
     constructor() {
         this.currentLevel = null;
         this.levelIndex = 0;
-        this.levels = ['levels/level1.json'];
+        this.levels = ['levels/level1.json', 'levels/level2.json', 'levels/level3.json'];
     }
     async loadLevel(index) {
         this.levelIndex = index;
@@ -13,16 +13,16 @@ class LevelManager {
             this.currentLevel = this._parseLevel(data);
             return this.currentLevel;
         } catch (e) {
-            console.error('关卡加载失败:', e);
+            console.error('Level load failed:', e);
             return null;
         }
     }
     _parseLevel(data) {
-        const TILE = 16;
         const parsed = {
             levelId: data.levelId || 1,
             name: data.name || 'World 1-1',
             timeLimit: data.timeLimit || 400,
+            theme: data.theme || 'overworld',
             width: data.width || 210,
             height: data.height || 15,
             playerStart: data.playerStart || { x: 48, y: 192 },
@@ -31,7 +31,11 @@ class LevelManager {
             enemies: data.enemies || [],
             coins: data.coins || [],
             pipes: data.pipes || [],
-            flagpole: data.flagpole || null
+            flagpole: data.flagpole || null,
+            checkpoint: data.checkpoint || null,
+            water: data.water || [],
+            lava: data.lava || [],
+            decorations: data.decorations || {}
         };
         if (data.tilemap && Array.isArray(data.tilemap)) {
             const tilePlatforms = [];
@@ -39,15 +43,15 @@ class LevelManager {
             for (let row = 0; row < data.tilemap.length; row++) {
                 for (let col = 0; col < data.tilemap[row].length; col++) {
                     const val = data.tilemap[row][col];
-                    const x = col * TILE;
-                    const y = row * TILE;
-                    if (val === 1) {
-                        tilePlatforms.push({ x, y, w: TILE, h: TILE });
-                    } else if (val === 2) {
+                    const x = col * 16;
+                    const y = row * 16;
+                    if (val === 1 || val === 'ground') {
+                        tilePlatforms.push({ x, y, w: 16, h: 16 });
+                    } else if (val === 2 || val === 'brick') {
                         tileBlocks.push({ x, y, type: 2, content: null });
-                    } else if (val === 3) {
+                    } else if (val === 3 || val === 'question') {
                         tileBlocks.push({ x, y, type: 3, content: 'coin' });
-                    } else if (val === 5) {
+                    } else if (val === 5 || val === 'hard') {
                         tileBlocks.push({ x, y, type: 5, content: null });
                     }
                 }
@@ -58,9 +62,6 @@ class LevelManager {
             if (tileBlocks.length > 0) {
                 parsed.blocks = parsed.blocks.concat(tileBlocks);
             }
-        }
-        if (data.pipes && Array.isArray(data.pipes)) {
-            parsed.pipes = data.pipes;
         }
         return parsed;
     }

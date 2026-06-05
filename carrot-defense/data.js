@@ -3,150 +3,54 @@ window.GAME_DATA = (function() {
   // 视觉系统规范 v2.0 - 差异化风格参数
   // ═══════════════════════════════════════════════════════════════════════════════
 
-  // 基础风格参数（所有角色共享）
   const BASE_STYLE = 'high quality illustration, clean lines, no text, transparent background, soft lighting';
 
-  // 塔防类别风格映射
   const TOWER_STYLES = {
-    physical: {
-      palette: 'warm earth tones, amber and rust accents',
-      shape: 'sturdy angular silhouette, defined edges',
-      mood: 'reliable defender, battle-worn charm',
-      detail: 'metallic sheen on weapons, leather straps, wooden textures'
-    },
-    magical: {
-      palette: 'mystical purples and blues, ethereal glow',
-      shape: 'flowing robes, crystalline structures',
-      mood: 'arcane wisdom, serene power',
-      detail: 'floating runes, magic circles, sparkling particles'
-    },
-    elemental: {
-      palette: 'vibrant element colors, dynamic gradients',
-      shape: 'elemental form, organic curves',
-      mood: 'raw natural force, untamed energy',
-      detail: 'elemental particles, swirling auras, glowing cores'
-    },
-    nature: {
-      palette: 'forest greens and browns, floral accents',
-      shape: 'organic shapes, leaf and vine motifs',
-      mood: 'gentle guardian, living harmony',
-      detail: 'bark textures, leaf details, small flowers'
-    },
-    support: {
-      palette: 'soft pastels, warm yellows and pinks',
-      shape: 'friendly rounded forms, welcoming posture',
-      mood: 'helpful ally, cheerful presence',
-      detail: 'sparkles, hearts, gentle glow'
-    },
-    dark: {
-      palette: 'deep purples and blacks, ghostly whites',
-      shape: 'ethereal wispy forms, floating elements',
-      mood: 'mysterious watcher, silent power',
-      detail: 'mist effects, translucent parts, glowing eyes'
-    },
-    tech: {
-      palette: 'metallic silver and blue, neon accents',
-      shape: 'geometric precision, mechanical joints',
-      mood: 'advanced technology, efficient design',
-      detail: 'circuit patterns, LED indicators, sleek surfaces'
-    }
+    physical: { palette: 'warm earth tones, amber and rust accents', shape: 'sturdy angular silhouette, defined edges', mood: 'reliable defender, battle-worn charm', detail: 'metallic sheen on weapons, leather straps, wooden textures' },
+    magical: { palette: 'mystical purples and blues, ethereal glow', shape: 'flowing robes, crystalline structures', mood: 'arcane wisdom, serene power', detail: 'floating runes, magic circles, sparkling particles' },
+    elemental: { palette: 'vibrant element colors, dynamic gradients', shape: 'elemental form, organic curves', mood: 'raw natural force, untamed energy', detail: 'elemental particles, swirling auras, glowing cores' },
+    nature: { palette: 'forest greens and browns, floral accents', shape: 'organic shapes, leaf and vine motifs', mood: 'gentle guardian, living harmony', detail: 'bark textures, leaf details, small flowers' },
+    support: { palette: 'soft pastels, warm yellows and pinks', shape: 'friendly rounded forms, welcoming posture', mood: 'helpful ally, cheerful presence', detail: 'sparkles, hearts, gentle glow' },
+    dark: { palette: 'deep purples and blacks, ghostly whites', shape: 'ethereal wispy forms, floating elements', mood: 'mysterious watcher, silent power', detail: 'mist effects, translucent parts, glowing eyes' },
+    tech: { palette: 'metallic silver and blue, neon accents', shape: 'geometric precision, mechanical joints', mood: 'advanced technology, efficient design', detail: 'circuit patterns, LED indicators, sleek surfaces' }
   };
 
-  // 怪物类别风格映射
   const MONSTER_STYLES = {
-    slime: {
-      palette: 'glossy translucent, vibrant jelly colors',
-      shape: 'blobby amorphous, bouncy form',
-      mood: 'playful innocent, harmless charm',
-      detail: 'glossy highlights, wobble effect, inner bubbles'
-    },
-    beast: {
-      palette: 'natural fur colors, warm browns and grays',
-      shape: 'animal-like anatomy, cute proportions',
-      mood: 'wild but friendly, curious nature',
-      detail: 'fluffy fur texture, expressive ears, wagging tails'
-    },
-    plant: {
-      palette: 'fresh greens, floral pinks and whites',
-      shape: 'vegetable forms, leafy appendages',
-      mood: 'lively vegetation, growing energy',
-      detail: 'leaf veins, petal layers, root details'
-    },
-    undead: {
-      palette: 'pale whites and grays, spectral blues',
-      shape: 'floating ethereal, tattered edges',
-      mood: 'spooky cute, harmless haunting',
-      detail: 'translucent wisps, glowing eyes, floating particles'
-    },
-    elemental: {
-      palette: 'elemental colors, fiery oranges or icy blues',
-      shape: 'flame or crystal forms, dynamic shape',
-      mood: 'elemental spirit, raw energy',
-      detail: 'swirling particles, glowing core, elemental trails'
-    },
-    insect: {
-      palette: 'chitin shells, iridescent highlights',
-      shape: 'bug anatomy, multiple tiny legs',
-      mood: 'busy worker, determined march',
-      detail: 'shell patterns, wing details, antenna'
-    },
-    humanoid: {
-      palette: 'skin tones, clothing colors',
-      shape: 'small humanoid, expressive face',
-      mood: 'mischievous character, personality',
-      detail: 'clothing folds, accessories, facial features'
-    },
-    mechanical: {
-      palette: 'metallic surfaces, painted details',
-      shape: 'robotic joints, mechanical parts',
-      mood: 'clockwork toy, friendly machine',
-      detail: 'gear patterns, rivets, glowing indicators'
-    },
-    aquatic: {
-      palette: 'ocean blues and teals, coral accents',
-      shape: 'aquatic forms, flowing fins',
-      mood: 'swimming grace, underwater charm',
-      detail: 'scales, bubbles, fin membranes'
-    }
+    slime: { palette: 'glossy translucent, vibrant jelly colors', shape: 'blobby amorphous, bouncy form', mood: 'playful innocent, harmless charm', detail: 'glossy highlights, wobble effect, inner bubbles' },
+    beast: { palette: 'natural fur colors, warm browns and grays', shape: 'animal-like anatomy, cute proportions', mood: 'wild but friendly, curious nature', detail: 'fluffy fur texture, expressive ears, wagging tails' },
+    plant: { palette: 'fresh greens, floral pinks and whites', shape: 'vegetable forms, leafy appendages', mood: 'lively vegetation, growing energy', detail: 'leaf veins, petal layers, root details' },
+    undead: { palette: 'pale whites and grays, spectral blues', shape: 'floating ethereal, tattered edges', mood: 'spooky cute, harmless haunting', detail: 'translucent wisps, glowing eyes, floating particles' },
+    elemental: { palette: 'elemental colors, fiery oranges or icy blues', shape: 'flame or crystal forms, dynamic shape', mood: 'elemental spirit, raw energy', detail: 'swirling particles, glowing core, elemental trails' },
+    insect: { palette: 'chitin shells, iridescent highlights', shape: 'bug anatomy, multiple tiny legs', mood: 'busy worker, determined march', detail: 'shell patterns, wing details, antenna' },
+    humanoid: { palette: 'skin tones, clothing colors', shape: 'small humanoid, expressive face', mood: 'mischievous character, personality', detail: 'clothing folds, accessories, facial features' },
+    mechanical: { palette: 'metallic surfaces, painted details', shape: 'robotic joints, mechanical parts', mood: 'clockwork toy, friendly machine', detail: 'gear patterns, rivets, glowing indicators' },
+    aquatic: { palette: 'ocean blues and teals, coral accents', shape: 'aquatic forms, flowing fins', mood: 'swimming grace, underwater charm', detail: 'scales, bubbles, fin membranes' }
   };
 
-  // Boss 风格增强
-  const BOSS_ENHANCEMENT = {
-    palette: 'richer saturated colors, royal accents',
-    shape: 'larger imposing, detailed silhouette',
-    mood: 'commanding presence, formidable but fair',
-    detail: 'ornate decorations, crown or symbols, aura effects, multiple detailed parts'
-  };
+  const BOSS_ENHANCEMENT = { palette: 'richer saturated colors, royal accents', shape: 'larger imposing, detailed silhouette', mood: 'commanding presence, formidable but fair', detail: 'ornate decorations, crown or symbols, aura effects, multiple detailed parts' };
 
-  // 构建塔防提示词
   function buildTowerPrompt(basePrompt, category, tier) {
     const style = TOWER_STYLES[category] || TOWER_STYLES.physical;
     const tierDetail = tier >= 2 ? 'upgraded enhanced form, more ornate' : '';
     const tierDetail3 = tier >= 3 ? 'legendary ultimate form, majestic aura, glowing runes' : '';
-
     return `${BASE_STYLE}, ${style.palette}, ${style.shape}, ${style.mood}, ${style.detail}, ${tierDetail} ${tierDetail3}, ${basePrompt}`;
   }
 
-  // 构建怪物提示词
   function buildMonsterPrompt(basePrompt, category, tier, isBoss) {
     const style = MONSTER_STYLES[category] || MONSTER_STYLES.beast;
     const bossStyle = isBoss ? `${BOSS_ENHANCEMENT.palette}, ${BOSS_ENHANCEMENT.shape}, ${BOSS_ENHANCEMENT.mood}, ${BOSS_ENHANCEMENT.detail}` : '';
     const tierSize = tier >= 3 ? 'larger size, more detailed' : tier >= 2 ? 'medium size, moderate detail' : 'small size, simple design';
-
     return `${BASE_STYLE}, ${style.palette}, ${style.shape}, ${style.mood}, ${style.detail}, ${tierSize}, ${bossStyle}, ${basePrompt}`;
   }
 
-  // 旧版兼容函数（保持 API 不变）
   const PREFIX = 'Cute kawaii chibi cartoon, isolated object, single character, centered, big sparkly eyes, rounded shapes, pastel colors, soft lighting, high quality illustration, clean lines, no text, transparent background, ';
   const BG_PREFIX = 'Top-down cute kawaii chibi cartoon game background, vibrant grass lawn, soft lighting, isometric view, no characters, no path, decorative flowers and bushes, ';
 
   function T(id, name, nameEn, category, tier, dmg, range, fireRate, cost, special, prompt, t2, t3) {
-    // 使用新的视觉系统构建提示词
     const fullPrompt = buildTowerPrompt(prompt, category, tier);
     return { id, name, nameEn, category, tier, dmg, range, fireRate, cost, special, prompt: fullPrompt, upgrade: { T2: t2, T3: t3 } };
   }
   function U(cost, prompt, desc) {
-    // 升级提示词保持简洁，在运行时动态添加风格
     return { cost, prompt: PREFIX + prompt, desc };
   }
 
@@ -271,12 +175,45 @@ window.GAME_DATA = (function() {
       'tiny quadcopter drone with propeller ears and smiling screen face, white red',
       U(520, 'armed drone with machine gun and camouflage paint', '小机+50%'),
       U(950, 'swarm commander with 4 drones and laser pointer', '4小机+激光')),
+
+    // ═══ 新塔 (T31-T38) ═══
+    T31: T('T31', '回旋镖塔', 'Boomerang', 'physical', 2, 22, 130, 1.5, 140, '回旋镖往返双伤',
+      'cute kangaroo holding a wooden boomerang with tribal patterns, brown fur, warm smile, australian style',
+      U(220, 'kangaroo warrior with two boomerangs and war paint', '往返+50%伤'),
+      U(400, 'kangaroo chief with flaming boomerang and feather crown', '可同时投3镖')),
+    T32: T('T32', '激光塔', 'Laser Tower', 'tech', 3, 32, 180, 0.4, 420, '持续激光束,无视护甲',
+      'kawaii crystal robot with laser cannon arm, glowing blue core, chrome finish, big digital eyes',
+      U(680, 'laser cannon with dual beam emitters and cooling fins', '激光+50%长'),
+      U(1200, 'orbital laser satellite with beam array and targeting visor', '灼烧+穿透所有')),
+    T33: T('T33', '毒液塔', 'Poison Tower', 'nature', 2, 8, 120, 0.8, 95, '毒液叠层,每层3dmg/s',
+      'cute purple snake coiled around a bubbling cauldron, green toxic glow, forked tongue, shy smile',
+      U(160, 'venom snake with double fangs and toxic aura', '毒叠5层'),
+      U(300, 'serpent queen with poison crown and death mist', '毒死释AoE毒云')),
+    T34: T('T34', '风之塔', 'Wind Tower', 'elemental', 2, 6, 140, 0.7, 110, '推怪后退50px,范围吹飞',
+      'tiny white cloud spirit with swirling wind blades, blue sky tones, puffed cheeks blowing',
+      U(180, 'storm cloud with tornado funnel and flying leaves', '推力翻倍'),
+      U(340, 'typhoon spirit with hurricane ring and lightning', '吹飞+减速50%')),
+    T35: T('T35', '护盾塔', 'Shield Tower', 'support', 2, 0, 80, 0, 80, '生成路障,阻挡怪物3s',
+      'kawaii shield-shaped creature with castle wall pattern, silver blue, determined expression, tiny feet',
+      U(140, 'reinforced shield with golden rim and magic barrier', '路障+2s'),
+      U(260, 'fortress shield with tower battlements and regen aura', '路障+反伤5')),
+    T36: T('T36', '金矿塔', 'Gold Mine', 'support', 2, 0, 0, 4.0, 100, '每4s产30g,升级更快',
+      'cute piggy bank with mining hat and pickaxe, golden coins spilling out, pink cheeks, happy smile',
+      U(180, 'vault tower with gold bars and security camera', '产速3s+40g'),
+      U(350, 'golden treasure chest with gem crown and coin rain', '产50g+邻格+10%')),
+    T37: T('T37', '蜜蜂塔', 'Bee Tower', 'nature', 2, 18, 110, 1.0, 130, '召2只蜜蜂巡逻攻击',
+      'fluffy yellow bumblebee sitting on tiny honeycomb house, big sparkling eyes, transparent wings, holding honey pot',
+      U(220, 'queen bee with royal crown and three worker bees', '蜜蜂+2'),
+      U(420, 'honey hive fortress with giant queen bee and bee army', '蜜蜂+毒刺减速')),
+    T38: T('T38', '音波塔', 'Sonic Tower', 'tech', 2, 15, 130, 1.2, 150, '音波震晕0.5s+穿透',
+      'cute music speaker with equalizer bars as face, neon pink purple, vinyl record on top, smiling',
+      U(240, 'subwoofer tower with bass waves and vibration', '震晕1s'),
+      U(440, 'concert stage with DJ booth and full sound system', '全屏震+持续伤')),
   };
 
   const MON_PREFIX = 'Cute kawaii chibi cartoon, isolated character, single creature, centered, big sparkly eyes, rounded shapes, pastel colors, soft lighting, high quality illustration, clean lines, no text, transparent background, ';
 
   function M(id, name, cat, hp, speed, armor, gold, tier, behavior, ability, prompt, opts) {
-    // 使用新的视觉系统构建提示词
     const isBoss = opts && opts.boss;
     const fullPrompt = buildMonsterPrompt(prompt, cat, tier, isBoss);
     return Object.assign({ id, name, cat, hp, speed, armor, gold, tier, behavior, ability, prompt: fullPrompt }, opts || {});
@@ -315,6 +252,16 @@ window.GAME_DATA = (function() {
     mini_spore: M('mini_spore', '小孢子', 'plant', 8, 60, 0, 1, 1, 'walk', '子怪', 'a tiny floating green spore with eyes', { mini: true }),
     mini_seed: M('mini_seed', '草莓籽', 'plant', 12, 55, 0, 2, 1, 'walk', '子怪', 'a tiny pink seed with cute eyes', { mini: true }),
     mini_scoop: M('mini_scoop', '小冰激凌', 'slime', 20, 60, 0, 4, 1, 'walk', '子怪', 'a tiny single-scoop ice cream with smile', { mini: true }),
+
+    // ═══ 新怪物 (8个) ═══
+    spider_01: M('spider_01', '蜘蛛怪', 'insect', 65, 55, 1, 14, 2, 'walk', '织网减速塔2s', 'a kawaii fuzzy purple spider with eight tiny legs, googly eyes, holding a tiny web, wearing a bow', { web: true }),
+    jellyfish_01: M('jellyfish_01', '水母怪', 'aquatic', 45, 70, 0, 16, 2, 'fly', '电击麻痹塔1s', 'a translucent pink jellyfish floating gracefully, tiny smile, glowing tentacles, sparkly', { flying: true, shock: true }),
+    robot_01: M('robot_01', '战斗机器人', 'mechanical', 180, 40, 5, 28, 3, 'walk', '发射导弹+自爆', 'a cute battle robot with tank treads, missile launcher on shoulder, blue LED eyes, chrome body', { missile: true }),
+    ninja_01: M('ninja_01', '忍者', 'humanoid', 120, 90, 0, 25, 3, 'walk', '30%闪避+飞镖', 'a tiny ninja in black outfit with red scarf, holding shuriken, one eye visible, sneaky pose', { dodge: 0.3 }),
+    wizard_01: M('wizard_01', '小法师', 'humanoid', 100, 60, 0, 24, 3, 'walk', '施法+护盾3s', 'a cute apprentice wizard with oversized pointy hat, starry robe, holding a spell book, blue sparkles', { shield: true }),
+    turtle_01: M('turtle_01', '乌龟', 'beast', 200, 25, 12, 22, 2, 'walk', '超高护甲+缩壳', 'a chubby green turtle with a colorful shell, tiny legs, big innocent eyes, slow and steady', { shell: true }),
+    snowman_01: M('snowman_01', '雪人', 'elemental', 140, 40, 3, 26, 3, 'walk', '冰冻光环减速20%', 'a kawaii snowman with carrot nose, top hat, scarf, holding a snowflake wand, frosty blue glow', { freezeAura: true }),
+    candy_01: M('candy_01', '糖果怪', 'slime', 90, 55, 0, 20, 2, 'walk', '死后留糖浆减速带', 'a giant colorful gummy bear with a candy cane, transparent jelly body, rainbow colors, sweet smile', { sticky: true }),
   };
 
   function pathOf(arr) {
@@ -384,56 +331,126 @@ window.GAME_DATA = (function() {
   ]);
   const L5_AIR = pathOf([...lineH(0, 17, 2)]);
 
+  // 新关卡路径
+  const L6 = pathOf([
+    ...lineH(0, 3, 5),
+    [3, 4], [3, 3], [3, 2],
+    ...lineH(4, 7, 2),
+    [7, 3], [7, 4], [7, 5], [7, 6], [7, 7],
+    ...lineH(8, 11, 7),
+    [11, 6], [11, 5], [11, 4],
+    ...lineH(12, 15, 4),
+    [15, 5], [15, 6], [15, 7], [15, 8],
+    ...lineH(16, 17, 8),
+  ]);
+  const L7 = pathOf([
+    ...lineH(0, 4, 2),
+    [4, 3], [4, 4], [4, 5],
+    ...lineH(5, 9, 5),
+    [9, 6], [9, 7], [9, 8], [9, 9],
+    ...lineH(10, 13, 9),
+    [13, 8], [13, 7], [13, 6], [13, 5], [13, 4],
+    ...lineH(14, 17, 4),
+  ]);
+  const L7_AIR = pathOf([
+    ...lineH(0, 17, 0),
+  ]);
+  const L8 = pathOf([
+    [0, 9], [1, 9], [2, 9],
+    [2, 8], [2, 7], [2, 6],
+    ...lineH(3, 5, 6),
+    [5, 5], [5, 4], [5, 3],
+    ...lineH(6, 8, 3),
+    [8, 4], [8, 5], [8, 6], [8, 7],
+    ...lineH(9, 11, 7),
+    [11, 6], [11, 5], [11, 4],
+    ...lineH(12, 14, 4),
+    [14, 5], [14, 6], [14, 7], [14, 8], [14, 9],
+    ...lineH(15, 17, 9),
+  ]);
+
   function lvl(id, name, theme, path, bgPrompt, bg1, bg2, towers, heroAvail, lives, gold, waves, stars, airPath) {
     return { id, name, theme, path, bgPrompt: BG_PREFIX + bgPrompt, bgColor1: bg1, bgColor2: bg2, allowedTowers: towers, heroAvailable: heroAvail, startLives: lives, startGold: gold, waves, stars, airPath: airPath || null };
   }
 
   function w(mon, count, interval) { return { monsters: [{ id: mon, count, interval }], boss: false }; }
   function wb(mon, count, interval) { return { monsters: [{ id: mon, count, interval }], boss: true }; }
+  function wm(...groups) { return { monsters: groups.map(g => ({ id: g[0], count: g[1], interval: g[2] })), boss: false }; }
+  function wbm(...groups) { return { monsters: groups.map(g => ({ id: g[0], count: g[1], interval: g[2] })), boss: true }; }
 
   const LEVELS = [
     lvl(1, '萝卜的故乡', 'grass', L1, 'sunny green meadow with pink sunset and curving river', '#9adb88', '#7cb86b', ['T01','T02','T03','T11','T13','T16'], true, 20, 150, [
       w('slime_01', 8, 1000),
-      w('slime_01', 6, 900), { monsters: [{ id: 'slime_01', count: 6, interval: 900 }, { id: 'slime_02', count: 3, interval: 900 }], boss: false },
-      { monsters: [{ id: 'slime_01', count: 4, interval: 800 }, { id: 'plant_01', count: 3, interval: 800 }, { id: 'beast_02', count: 2, interval: 800 }], boss: false },
-      { monsters: [{ id: 'slime_01', count: 6, interval: 700 }, { id: 'insect_01', count: 4, interval: 700 }, { id: 'slime_02', count: 3, interval: 700 }], boss: false },
-      { monsters: [{ id: 'slime_01', count: 8, interval: 600 }, { id: 'beast_03', count: 4, interval: 600 }, { id: 'plant_02', count: 3, interval: 600 }], boss: false },
-      { monsters: [{ id: 'slime_01', count: 10, interval: 500 }, { id: 'beast_03', count: 6, interval: 500 }, { id: 'plant_04', count: 2, interval: 500 }], boss: false },
+      w('slime_01', 6, 900), wm(['slime_01', 6, 900], ['slime_02', 3, 900]),
+      wm(['slime_01', 4, 800], ['plant_01', 3, 800], ['beast_02', 2, 800]),
+      wm(['slime_01', 6, 700], ['insect_01', 4, 700], ['slime_02', 3, 700]),
+      wm(['slime_01', 8, 600], ['beast_03', 4, 600], ['plant_02', 3, 600]),
+      wm(['slime_01', 10, 500], ['beast_03', 6, 500], ['plant_04', 2, 500]),
     ], { complete: 0, noLeak: 18, speed: 240 }),
     lvl(2, '沙漠商路', 'desert', L2, 'golden sand dunes with cactus groups and heat waves', '#f4d27a', '#e0a857', ['T03','T11','T14','T15','T17'], true, 15, 130, [
-      { monsters: [{ id: 'slime_02', count: 5, interval: 900 }, { id: 'beast_01', count: 4, interval: 900 }], boss: false },
-      { monsters: [{ id: 'slime_02', count: 8, interval: 800 }, { id: 'insect_01', count: 4, interval: 800 }], boss: false },
-      { monsters: [{ id: 'slime_02', count: 6, interval: 700 }, { id: 'beast_01', count: 4, interval: 700 }, { id: 'plant_03', count: 2, interval: 700 }], boss: false },
-      { monsters: [{ id: 'slime_02', count: 10, interval: 600 }, { id: 'beast_05', count: 3, interval: 600 }, { id: 'humanoid_01', count: 2, interval: 600 }], boss: false },
-      { monsters: [{ id: 'beast_05', count: 6, interval: 600 }, { id: 'plant_03', count: 4, interval: 600 }, { id: 'beast_04', count: 3, interval: 600 }], boss: false },
-      { monsters: [{ id: 'humanoid_01', count: 8, interval: 500 }, { id: 'beast_05', count: 5, interval: 500 }, { id: 'plant_04', count: 2, interval: 500 }], boss: false },
+      wm(['slime_02', 5, 900], ['beast_01', 4, 900]),
+      wm(['slime_02', 8, 800], ['insect_01', 4, 800]),
+      wm(['slime_02', 6, 700], ['beast_01', 4, 700], ['plant_03', 2, 700]),
+      wm(['slime_02', 10, 600], ['beast_05', 3, 600], ['humanoid_01', 2, 600]),
+      wm(['beast_05', 6, 600], ['plant_03', 4, 600], ['beast_04', 3, 600]),
+      wm(['humanoid_01', 8, 500], ['beast_05', 5, 500], ['plant_04', 2, 500]),
     ], { complete: 0, noLeak: 13, speed: 300 }),
     lvl(3, '雪山驿站', 'snow', L3, 'snowy pine trees with frozen lake and three-layer highland platforms', '#dff1ff', '#a8d4f0', ['T03','T04','T10','T17','T22'], true, 15, 180, [
-      { monsters: [{ id: 'slime_03', count: 6, interval: 800 }, { id: 'beast_04', count: 3, interval: 800 }], boss: false },
-      { monsters: [{ id: 'beast_04', count: 8, interval: 700 }, { id: 'slime_03', count: 4, interval: 700 }], boss: false },
-      { monsters: [{ id: 'beast_04', count: 6, interval: 600 }, { id: 'undead_01', count: 4, interval: 600 }, { id: 'slime_03', count: 3, interval: 600 }], boss: false },
-      { monsters: [{ id: 'beast_04', count: 10, interval: 500 }, { id: 'undead_01', count: 4, interval: 500 }, { id: 'mechanical_01', count: 2, interval: 500 }], boss: false },
-      { monsters: [{ id: 'beast_04', count: 8, interval: 500 }, { id: 'undead_02', count: 4, interval: 500 }, { id: 'beast_03', count: 4, interval: 500 }], boss: false },
-      { monsters: [{ id: 'mechanical_01', count: 4, interval: 400 }, { id: 'beast_04', count: 12, interval: 400 }, { id: 'undead_02', count: 4, interval: 400 }], boss: false },
+      wm(['slime_03', 6, 800], ['beast_04', 3, 800]),
+      wm(['beast_04', 8, 700], ['slime_03', 4, 700]),
+      wm(['beast_04', 6, 600], ['undead_01', 4, 600], ['slime_03', 3, 600]),
+      wm(['beast_04', 10, 500], ['undead_01', 4, 500], ['mechanical_01', 2, 500]),
+      wm(['beast_04', 8, 500], ['undead_02', 4, 500], ['beast_03', 4, 500]),
+      wm(['mechanical_01', 4, 400], ['beast_04', 12, 400], ['undead_02', 4, 400]),
     ], { complete: 0, noLeak: 13, speed: 300 }),
     lvl(4, '火山熔岩', 'volcano', L4, 'dark red volcano rock with lava river and steam vents', '#5a3a30', '#a04030', ['T04','T05','T06','T10','T25','T26'], true, 20, 200, [
-      { monsters: [{ id: 'elemental_01', count: 6, interval: 800 }, { id: 'slime_01', count: 4, interval: 800 }], boss: false },
-      { monsters: [{ id: 'elemental_01', count: 8, interval: 700 }, { id: 'plant_01', count: 4, interval: 700 }], boss: false },
-      { monsters: [{ id: 'elemental_01', count: 6, interval: 600 }, { id: 'humanoid_01', count: 4, interval: 600 }, { id: 'beast_05', count: 3, interval: 600 }], boss: false },
-      { monsters: [{ id: 'elemental_01', count: 10, interval: 500 }, { id: 'elemental_02', count: 3, interval: 500 }, { id: 'undead_02', count: 4, interval: 500 }], boss: false },
-      { monsters: [{ id: 'elemental_02', count: 4, interval: 600 }, { id: 'mechanical_01', count: 4, interval: 600 }, { id: 'plant_04', count: 2, interval: 600 }], boss: false },
-      { monsters: [{ id: 'elemental_02', count: 6, interval: 500 }, { id: 'mechanical_02', count: 3, interval: 500 }, { id: 'beast_06', count: 2, interval: 500 }], boss: false },
-      { monsters: [{ id: 'humanoid_02', count: 1, interval: 0 }, { id: 'elemental_01', count: 8, interval: 400 }, { id: 'beast_06', count: 4, interval: 400 }], boss: true },
+      wm(['elemental_01', 6, 800], ['slime_01', 4, 800]),
+      wm(['elemental_01', 8, 700], ['plant_01', 4, 700]),
+      wm(['elemental_01', 6, 600], ['humanoid_01', 4, 600], ['beast_05', 3, 600]),
+      wm(['elemental_01', 10, 500], ['elemental_02', 3, 500], ['undead_02', 4, 500]),
+      wm(['elemental_02', 4, 600], ['mechanical_01', 4, 600], ['plant_04', 2, 600]),
+      wm(['elemental_02', 6, 500], ['mechanical_02', 3, 500], ['beast_06', 2, 500]),
+      wbm(['humanoid_02', 1, 0], ['elemental_01', 8, 400], ['beast_06', 4, 400]),
     ], { complete: 0, noLeak: 16, speed: 360 }),
     lvl(5, '浮空岛', 'sky', L5, 'rainbow sea of clouds with floating stone islands and breakable rainbow bridges', '#a0c8ff', '#ffd6e0', ['T02','T05','T06','T10','T25','T29'], true, 20, 220, [
-      { monsters: [{ id: 'beast_03', count: 6, interval: 800 }, { id: 'slime_01', count: 4, interval: 800 }], boss: false },
-      { monsters: [{ id: 'beast_03', count: 8, interval: 700 }, { id: 'insect_02', count: 4, interval: 700 }, { id: 'plant_02', count: 3, interval: 700 }], boss: false },
-      { monsters: [{ id: 'beast_03', count: 6, interval: 600 }, { id: 'insect_02', count: 4, interval: 600 }, { id: 'beast_06', count: 2, interval: 600 }], boss: false },
-      { monsters: [{ id: 'insect_02', count: 8, interval: 500 }, { id: 'beast_03', count: 6, interval: 500 }, { id: 'aquatic_01', count: 3, interval: 500 }], boss: false },
-      { monsters: [{ id: 'beast_06', count: 4, interval: 500 }, { id: 'elemental_02', count: 4, interval: 500 }, { id: 'undead_03', count: 3, interval: 500 }], boss: false },
-      { monsters: [{ id: 'beast_06', count: 4, interval: 500 }, { id: 'elemental_02', count: 4, interval: 500 }, { id: 'mechanical_02', count: 2, interval: 500 }], boss: false },
-      { monsters: [{ id: 'beast_07', count: 1, interval: 0 }, { id: 'beast_06', count: 6, interval: 400 }, { id: 'elemental_02', count: 4, interval: 400 }], boss: true },
+      wm(['beast_03', 6, 800], ['slime_01', 4, 800]),
+      wm(['beast_03', 8, 700], ['insect_02', 4, 700], ['plant_02', 3, 700]),
+      wm(['beast_03', 6, 600], ['insect_02', 4, 600], ['beast_06', 2, 600]),
+      wm(['insect_02', 8, 500], ['beast_03', 6, 500], ['aquatic_01', 3, 500]),
+      wm(['beast_06', 4, 500], ['elemental_02', 4, 500], ['undead_03', 3, 500]),
+      wm(['beast_06', 4, 500], ['elemental_02', 4, 500], ['mechanical_02', 2, 500]),
+      wbm(['beast_07', 1, 0], ['beast_06', 6, 400], ['elemental_02', 4, 400]),
     ], { complete: 0, noLeak: 16, speed: 420 }, L5_AIR),
+
+    // ═══ 新关卡 6, 7, 8 ═══
+    lvl(6, '丛林秘境', 'jungle', L6, 'dense tropical jungle with giant leaves, vines hanging, exotic flowers, misty atmosphere', '#2d5a27', '#1a3a18', ['T01','T03','T14','T17','T31','T33','T34','T37'], true, 20, 250, [
+      wm(['spider_01', 5, 900], ['plant_01', 4, 900]),
+      wm(['spider_01', 8, 800], ['plant_03', 3, 800], ['beast_05', 2, 800]),
+      wm(['spider_01', 6, 700], ['turtle_01', 3, 700], ['plant_01', 4, 700]),
+      wm(['spider_01', 10, 600], ['turtle_01', 5, 600], ['ninja_01', 2, 600]),
+      wm(['ninja_01', 4, 500], ['spider_01', 8, 500], ['turtle_01', 4, 500]),
+      wm(['ninja_01', 6, 450], ['candy_01', 4, 450], ['spider_01', 6, 450]),
+      wbm(['humanoid_02', 1, 0], ['ninja_01', 6, 400], ['turtle_01', 6, 400]),
+    ], { complete: 0, noLeak: 16, speed: 480 }),
+    lvl(7, '海底世界', 'underwater', L7, 'deep ocean floor with coral reefs, glowing jellyfish, bubbles rising, sunken treasure', '#1a5276', '#0d3b66', ['T03','T06','T02','T25','T32','T35','T38'], true, 20, 280, [
+      wm(['jellyfish_01', 6, 800], ['aquatic_01', 3, 800]),
+      wm(['jellyfish_01', 8, 700], ['food_01', 4, 700], ['aquatic_01', 3, 700]),
+      wm(['jellyfish_01', 6, 600], ['robot_01', 2, 600], ['food_01', 4, 600]),
+      wm(['jellyfish_01', 10, 500], ['robot_01', 4, 500], ['wizard_01', 2, 500]),
+      wm(['robot_01', 5, 450], ['wizard_01', 4, 450], ['jellyfish_01', 6, 450]),
+      wm(['robot_01', 6, 400], ['wizard_01', 4, 400], ['snowman_01', 3, 400]),
+      wbm(['slime_04', 1, 0], ['robot_01', 6, 400], ['wizard_01', 6, 400]),
+    ], { complete: 0, noLeak: 16, speed: 540 }, L7_AIR),
+    lvl(8, '糖果王国', 'candy', L8, 'sweet candy wonderland with lollipop trees, chocolate river, frosting mountains, gumdrop path', '#ff9ff3', '#f368e0', ['T05','T18','T19','T21','T22','T14','T33','T36','T37'], true, 20, 300, [
+      wm(['candy_01', 6, 800], ['slime_02', 4, 800]),
+      wm(['candy_01', 8, 700], ['slime_03', 4, 700], ['food_01', 3, 700]),
+      wm(['candy_01', 6, 600], ['snowman_01', 3, 600], ['slime_03', 4, 600]),
+      wm(['candy_01', 10, 500], ['snowman_01', 5, 500], ['ninja_01', 3, 500]),
+      wm(['snowman_01', 6, 450], ['candy_01', 8, 450], ['wizard_01', 3, 450]),
+      wm(['snowman_01', 8, 400], ['wizard_01', 5, 400], ['candy_01', 6, 400]),
+      wm(['snowman_01', 6, 350], ['wizard_01', 6, 350], ['turtle_01', 4, 350]),
+      wbm(['beast_07', 1, 0], ['snowman_01', 8, 350], ['candy_01', 8, 350]),
+    ], { complete: 0, noLeak: 16, speed: 600 }),
   ];
 
   const HERO = {
@@ -450,6 +467,9 @@ window.GAME_DATA = (function() {
     range: 200,
     baseAtk: 25,
     baseHp: 100,
+    // 英雄等级系统
+    xpPerLevel: [0, 50, 120, 250, 500, 1000, 2000, 4000],
+    levelUpBonus: { hp: 15, atk: 5 },
   };
 
   const TALENTS = [
@@ -458,6 +478,23 @@ window.GAME_DATA = (function() {
     { id: 't_hp', name: '强身健体', desc: '出格塔(熊猫/向日葵/巫师/凤凰)+1HP', icon: '💪', unlockLevel: 3, apply: (s) => { s.outOfGridHpBonus = (s.outOfGridHpBonus || 0) + 1; } },
     { id: 't_greed', name: '贪婪之手', desc: '击杀金币+1', icon: '💰', unlockLevel: 4, apply: (s) => { s.goldBonusPerKill = (s.goldBonusPerKill || 0) + 1; } },
     { id: 't_hero', name: '英灵之力', desc: '英雄技能CD-15%', icon: '🌟', unlockLevel: 5, apply: (s) => { s.heroCdMul = (s.heroCdMul || 1) * 0.85; } },
+    { id: 't_power', name: '远古之力', desc: '所有塔攻击+10%', icon: '⚡', unlockLevel: 6, apply: (s) => { s.globalDmgMul = (s.globalDmgMul || 1) * 1.10; } },
+    { id: 't_armor', name: '钢铁意志', desc: '塔生命+20%', icon: '🛡️', unlockLevel: 7, apply: (s) => { s.towerHpMul = (s.towerHpMul || 1) * 1.20; } },
+    { id: 't_wealth', name: '王者之财', desc: '初始金币+50', icon: '👑', unlockLevel: 8, apply: (s) => { s.startGold += 50; } },
+  ];
+
+  // 成就系统
+  const ACHIEVEMENTS = [
+    { id: 'a_first_kill', name: '初次击杀', desc: '消灭第一个怪物', icon: '⚔️', check: (s) => s.totalKilled >= 1 },
+    { id: 'a_kill_100', name: '百人斩', desc: '累计消灭100个怪物', icon: '💀', check: (s) => s.totalKilled >= 100 },
+    { id: 'a_kill_500', name: '屠戮者', desc: '累计消灭500个怪物', icon: '🔥', check: (s) => s.totalKilled >= 500 },
+    { id: 'a_no_leak', name: '完美守护', desc: '一关不丢任何生命', icon: '🛡️', check: (s) => s.lives >= s.level.startLives && s.scene === 'won' },
+    { id: 'a_rich', name: '暴发户', desc: '金币达到500', icon: '💰', check: (s) => s.gold >= 500 },
+    { id: 'a_speedrun', name: '速通达人', desc: '3分钟内通关任意关卡', icon: '⏱️', check: (s) => s.scene === 'won' && (performance.now() - s.startedAt) / 1000 <= 180 },
+    { id: 'a_combo_10', name: '连杀大师', desc: '达成10连杀', icon: '🔪', check: (s) => s.combo >= 10 },
+    { id: 'a_hero_lv5', name: '英雄崛起', desc: '英雄达到5级', icon: '🌟', check: (s) => s.hero && s.hero.level >= 5 },
+    { id: 'a_all_stars', name: '全星收集', desc: '任意关卡获得3星', icon: '⭐', check: () => { const stars = JSON.parse(localStorage.getItem('cd_stars') || '{}'); return Object.values(stars).some(v => v >= 3); } },
+    { id: 'a_tower_10', name: '塔防大师', desc: '放置10座塔', icon: '🏰', check: (s) => s.towers.length >= 10 },
   ];
 
   const CARROT_PROMPT = MON_PREFIX + 'cute kawaii chibi cartoon carrot character, big smile, blushing pink cheeks, small green leaf hat with white polka dots, stubby arms, happy expression, anthropomorphic vegetable, full body';
@@ -465,5 +502,5 @@ window.GAME_DATA = (function() {
   const BG_PROMPTS = {};
   LEVELS.forEach(l => { BG_PROMPTS['bg_' + l.id] = l.bgPrompt; });
 
-  return { TOWERS, MONSTERS, LEVELS, HERO, TALENTS, CARROT_PROMPT, BG_PROMPTS, PREFIX, MON_PREFIX, BG_PREFIX };
+  return { TOWERS, MONSTERS, LEVELS, HERO, TALENTS, ACHIEVEMENTS, CARROT_PROMPT, BG_PROMPTS, PREFIX, MON_PREFIX, BG_PREFIX };
 })();

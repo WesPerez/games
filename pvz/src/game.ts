@@ -1,5 +1,5 @@
-import { CANVAS_W, CANVAS_H, GRID_LEFT, GRID_TOP, CELL_W, CELL_H, GRID_COLS, GRID_ROWS, TOP_BAR_H, PLANT_CONFIG, ZOMBIE_CONFIG, INITIAL_SUN, SUN_VALUE, SUN_FALL_INTERVAL, SUN_LIFETIME, PEA_SPEED, CHERRY_EXPLOSION_RADIUS, WAVE_CONFIG, GAME_STATES, PLANT_TYPES } from './constants';
-import { GameState, Plant, Zombie, Projectile, Sun, Particle, PlantCard, PlantType, ZombieType, GameStatus } from './types';
+import { CANVAS_W, CANVAS_H, GRID_LEFT, GRID_TOP, CELL_W, CELL_H, GRID_COLS, GRID_ROWS, TOP_BAR_H, PLANT_CONFIG, ZOMBIE_CONFIG, INITIAL_SUN, SUN_VALUE, SUN_FALL_INTERVAL, SUN_LIFETIME, PEA_SPEED, CHERRY_EXPLOSION_RADIUS, WAVE_CONFIG, GAME_STATES, PLANT_TYPES, TWIN_SUNFLOWER_INTERVAL, CHOMPER_EAT_TIME, POTATO_ARM_TIME, POTATO_EXPLOSION_RADIUS, SLOW_FACTOR, SLOW_DURATION, MOWER_SPEED } from './constants';
+import { GameState, Plant, Zombie, Projectile, Sun, Particle, PlantCard, PlantType, ZombieType, GameStatus, LawnMower } from './types';
 import { Renderer } from './renderer';
 import { InputHandler } from './input';
 
@@ -38,7 +38,25 @@ export class Game {
       { type: PLANT_TYPES.PEASHOOTER, cooldownTimer: 0, maxCooldown: PLANT_CONFIG.peashooter.cooldown, ready: true },
       { type: PLANT_TYPES.WALLNUT, cooldownTimer: 0, maxCooldown: PLANT_CONFIG.wallnut.cooldown, ready: true },
       { type: PLANT_TYPES.CHERRYBOMB, cooldownTimer: 0, maxCooldown: PLANT_CONFIG.cherrybomb.cooldown, ready: true },
+      { type: PLANT_TYPES.SNOWPEA, cooldownTimer: 0, maxCooldown: PLANT_CONFIG.snowpea.cooldown, ready: true },
+      { type: PLANT_TYPES.REPEATER, cooldownTimer: 0, maxCooldown: PLANT_CONFIG.repeater.cooldown, ready: true },
+      { type: PLANT_TYPES.CHOMPER, cooldownTimer: 0, maxCooldown: PLANT_CONFIG.chomper.cooldown, ready: true },
+      { type: PLANT_TYPES.POTATOMINE, cooldownTimer: 0, maxCooldown: PLANT_CONFIG.potatomine.cooldown, ready: true },
+      { type: PLANT_TYPES.TWINSUNFLOWER, cooldownTimer: 0, maxCooldown: PLANT_CONFIG.twinsunflower.cooldown, ready: true },
+      { type: PLANT_TYPES.GARLIC, cooldownTimer: 0, maxCooldown: PLANT_CONFIG.garlic.cooldown, ready: true },
     ];
+
+    const mowers: LawnMower[] = [];
+    for (let r = 0; r < GRID_ROWS; r++) {
+      mowers.push({
+        row: r,
+        x: GRID_LEFT - 30,
+        y: GRID_TOP + r * CELL_H + CELL_H / 2,
+        active: true,
+        triggered: false,
+        speed: MOWER_SPEED,
+      });
+    }
 
     return {
       plants: [],
@@ -46,6 +64,7 @@ export class Game {
       projectiles: [],
       suns: [],
       particles: [],
+      mowers,
       sunCount: INITIAL_SUN,
       selectedPlant: null,
       selectedTool: null,
@@ -55,6 +74,7 @@ export class Game {
       waveActive: false,
       waveZombiesRemaining: 0,
       gameStatus: GAME_STATES.PLAYING,
+      screenState: 'start',
       sunFallTimer: 5,
       plantCards,
       mouseX: 0,
@@ -62,6 +82,10 @@ export class Game {
       hoveredCell: null,
       grid,
       totalTime: 0,
+      screenShake: 0,
+      waveAnnouncement: '',
+      waveAnnouncementTimer: 0,
+      sunGlowPhase: 0,
     };
   }
 
@@ -79,7 +103,25 @@ export class Game {
   restart() {
     this.gameId++;
     this.state = this.createInitialState();
+    this.state.screenState = 'playing';
+    this.state.gameStatus = GAME_STATES.PLAYING;
     this.lastTime = performance.now();
+  }
+
+  startGame() {
+    this.state.screenState = 'playing';
+    this.state.gameStatus = GAME_STATES.PLAYING;
+    this.state.totalTime = 0;
+  }
+
+  togglePause() {
+    const s = this.state;
+    if (s.screenState !== 'playing') return;
+    if (s.gameStatus === GAME_STATES.PLAYING) {
+      s.gameStatus = GAME_STATES.PAUSED;
+    } else if (s.gameStatus === GAME_STATES.PAUSED) {
+      s.gameStatus = GAME_STATES.PLAYING;
+    }
   }
 
   loop = (now: number) => {
@@ -98,10 +140,15 @@ export class Game {
   update(dt: number) {
     const s = this.state;
     s.totalTime += dt;
+    s.sunGlowPhase += dt * 3;
+
+    if (s.screenShake > 0) s.screenShake = Math.max(0, s.screenShake - dt * 3);
+    if (s.waveAnnouncementTimer > 0) s.waveAnnouncementTimer -= dt;
 
     this.updatePlantCards(dt);
     this.updateSunSystem(dt);
     this.updateWaveSystem(dt);
+    this.updateMowers(dt);
     this.updateZombies(dt);
     this.updatePlants(dt);
     this.updateProjectiles(dt);
@@ -151,12 +198,13 @@ export class Game {
 
   spawnSunFromPlant(plant: Plant) {
     const s = this.state;
+    const value = plant.type === PLANT_TYPES.TWINSUNFLOWER ? SUN_VALUE * 2 : SUN_VALUE;
     const sun: Sun = {
       x: plant.x,
       y: plant.y - 20,
       targetX: plant.x + (Math.random() - 0.5) * 60,
       targetY: plant.y + 30 + Math.random() * 40,
-      value: SUN_VALUE,
+      value,
       state: 'falling',
       timer: SUN_LIFETIME,
       scale: 0.6,
@@ -188,6 +236,9 @@ export class Game {
     }
     s.waveZombiesRemaining = totalZombies;
 
+    s.waveAnnouncement = `第 ${index + 1} 波僵尸来袭!`;
+    s.waveAnnouncementTimer = 2.5;
+
     let spawnDelay = 0;
     const currentGameId = this.gameId;
     for (const group of wave.zombies) {
@@ -214,6 +265,7 @@ export class Game {
       hp: config.hp,
       maxHp: config.hp,
       speed: config.speed,
+      baseSpeed: config.speed,
       damage: config.damage,
       animTimer: 0,
       animFrame: 0,
@@ -222,8 +274,27 @@ export class Game {
       targetPlant: null,
       flashTimer: 0,
       bobOffset: Math.random() * Math.PI * 2,
+      slowTimer: 0,
+      newspaperHp: type === 'newspaper' ? 200 : 0,
+      newspaperMaxHp: type === 'newspaper' ? 200 : 0,
+      shieldHp: type === 'screendoor' ? 200 : 0,
+      shieldMaxHp: type === 'screendoor' ? 200 : 0,
+      hasFlag: type === 'flag',
+      hasPole: type === 'polevaulter',
+      jumped: false,
     };
     s.zombies.push(zombie);
+  }
+
+  updateMowers(dt: number) {
+    const s = this.state;
+    for (const mower of s.mowers) {
+      if (!mower.triggered || !mower.active) continue;
+      mower.x += mower.speed * dt;
+      if (mower.x > CANVAS_W + 60) {
+        mower.active = false;
+      }
+    }
   }
 
   updateZombies(dt: number) {
@@ -237,12 +308,38 @@ export class Game {
       zombie.bobOffset += dt * 3;
       zombie.flashTimer = Math.max(0, zombie.flashTimer - dt);
 
+      if (zombie.slowTimer > 0) {
+        zombie.slowTimer -= dt;
+        zombie.speed = zombie.baseSpeed * SLOW_FACTOR;
+        if (zombie.slowTimer <= 0) {
+          zombie.speed = zombie.baseSpeed;
+        }
+      }
+
       if (zombie.state === 'dying') {
         zombie.stateTimer -= dt;
         if (zombie.stateTimer <= 0) {
           zombie.stateTimer = -999;
         }
         continue;
+      }
+
+      let effectiveSpeed = zombie.speed;
+
+      // Pole Vaulter: if not jumped yet, run fast, then jump over first plant
+      if (zombie.type === 'polevaulter' && !zombie.jumped) {
+        const cellCol = Math.floor((zombie.x - GRID_LEFT) / CELL_W);
+        for (let c = Math.max(0, cellCol); c <= Math.min(GRID_COLS - 1, cellCol + 1); c++) {
+          const plant = s.grid[zombie.row]?.[c];
+          if (plant && plant.state !== 'dying' && plant.state !== 'exploding') {
+            const plantX = GRID_LEFT + c * CELL_W + CELL_W / 2;
+            if (Math.abs(zombie.x - plantX) < CELL_W * 1.0 && zombie.x > plantX - 30) {
+              zombie.jumped = true;
+              zombie.x = plantX + CELL_W * 0.5;
+              this.spawnParticles(zombie.x, zombie.y - 20, ['#aaa', '#ccc', '#fff'], 8);
+            }
+          }
+        }
       }
 
       const cellCol = Math.floor((zombie.x - GRID_LEFT) / CELL_W);
@@ -252,6 +349,33 @@ export class Game {
         if (plant && plant.state !== 'dying' && plant.state !== 'exploding') {
           const plantCenterX = GRID_LEFT + c * CELL_W + CELL_W / 2;
           if (Math.abs(zombie.x - plantCenterX) < CELL_W * 0.7) {
+            // Garlic: divert to another lane
+            if (plant.type === PLANT_TYPES.GARLIC && zombie.state === 'walking') {
+              const newRow = (zombie.row + 1 + Math.floor(Math.random() * (GRID_ROWS - 1))) % GRID_ROWS;
+              zombie.row = newRow;
+              zombie.y = GRID_TOP + newRow * CELL_H + CELL_H / 2;
+              this.spawnParticles(plant.x, plant.y, ['#ddddff', '#ccccff', '#bbbbff'], 5);
+              break;
+            }
+
+            // Chomper: eat zombie
+            if (plant.type === PLANT_TYPES.CHOMPER && plant.state === 'idle') {
+              plant.state = 'chomping';
+              plant.stateTimer = CHOMPER_EAT_TIME;
+              zombie.hp -= PLANT_CONFIG.chomper.damage;
+              plant.attackTimer = PLANT_CONFIG.chomper.cooldown;
+              break;
+            }
+
+            // Potato Mine: explode
+            if (plant.type === PLANT_TYPES.POTATOMINE && plant.state === 'armed') {
+              plant.state = 'exploding';
+              plant.stateTimer = 0.6;
+              this.potatoMineExplode(plant.row, plant.col);
+              s.grid[plant.row][plant.col] = null;
+              break;
+            }
+
             zombie.state = 'attacking';
             zombie.targetPlant = plant;
             plant.hp -= zombie.damage * dt;
@@ -270,7 +394,7 @@ export class Game {
       if (!attacking) {
         zombie.state = 'walking';
         zombie.targetPlant = null;
-        zombie.x -= zombie.speed * dt;
+        zombie.x -= effectiveSpeed * dt;
       }
     }
 
@@ -304,7 +428,15 @@ export class Game {
         plant.stateTimer -= dt;
         continue;
       }
+      if (plant.state === 'chomping') {
+        plant.stateTimer -= dt;
+        if (plant.stateTimer <= 0) {
+          plant.state = 'idle';
+        }
+        continue;
+      }
 
+      // Sunflower
       if (plant.type === PLANT_TYPES.SUNFLOWER) {
         plant.produceTimer += dt;
         if (plant.produceTimer >= 24) {
@@ -321,6 +453,24 @@ export class Game {
         }
       }
 
+      // Twin Sunflower
+      if (plant.type === PLANT_TYPES.TWINSUNFLOWER) {
+        plant.produceTimer += dt;
+        if (plant.produceTimer >= TWIN_SUNFLOWER_INTERVAL) {
+          plant.produceTimer = 0;
+          plant.state = 'producing';
+          plant.stateTimer = 0.6;
+          this.spawnSunFromPlant(plant);
+        }
+        if (plant.state === 'producing') {
+          plant.stateTimer -= dt;
+          if (plant.stateTimer <= 0) {
+            plant.state = 'idle';
+          }
+        }
+      }
+
+      // Peashooter
       if (plant.type === PLANT_TYPES.PEASHOOTER) {
         const hasZombieInRow = s.zombies.some(z => z.row === plant.row && z.x > plant.x && z.state !== 'dying');
         if (hasZombieInRow) {
@@ -329,7 +479,7 @@ export class Game {
             plant.attackTimer = 0;
             plant.state = 'attacking';
             plant.stateTimer = 0.3;
-            this.firePea(plant);
+            this.firePea(plant, false);
           }
         }
         if (plant.state === 'attacking') {
@@ -338,6 +488,65 @@ export class Game {
             plant.state = 'idle';
           }
         }
+      }
+
+      // Snow Pea
+      if (plant.type === PLANT_TYPES.SNOWPEA) {
+        const hasZombieInRow = s.zombies.some(z => z.row === plant.row && z.x > plant.x && z.state !== 'dying');
+        if (hasZombieInRow) {
+          plant.attackTimer += dt;
+          if (plant.attackTimer >= 1.5) {
+            plant.attackTimer = 0;
+            plant.state = 'attacking';
+            plant.stateTimer = 0.3;
+            this.firePea(plant, true);
+          }
+        }
+        if (plant.state === 'attacking') {
+          plant.stateTimer -= dt;
+          if (plant.stateTimer <= 0) {
+            plant.state = 'idle';
+          }
+        }
+      }
+
+      // Repeater
+      if (plant.type === PLANT_TYPES.REPEATER) {
+        const hasZombieInRow = s.zombies.some(z => z.row === plant.row && z.x > plant.x && z.state !== 'dying');
+        if (hasZombieInRow) {
+          plant.attackTimer += dt;
+          if (plant.attackTimer >= 1.2) {
+            plant.attackTimer = 0;
+            plant.state = 'attacking';
+            plant.stateTimer = 0.3;
+            this.firePea(plant, false);
+            setTimeout(() => {
+              if (s.gameStatus === GAME_STATES.PLAYING && s.plants.includes(plant)) {
+                this.firePea(plant, false);
+              }
+            }, 200);
+          }
+        }
+        if (plant.state === 'attacking') {
+          plant.stateTimer -= dt;
+          if (plant.stateTimer <= 0) {
+            plant.state = 'idle';
+          }
+        }
+      }
+
+      // Potato Mine
+      if (plant.type === PLANT_TYPES.POTATOMINE && plant.state === 'idle') {
+        plant.attackTimer += dt;
+        if (plant.attackTimer >= POTATO_ARM_TIME) {
+          plant.state = 'armed';
+          this.spawnParticles(plant.x, plant.y - 10, ['#ff8c00', '#ff6600', '#ffcc00'], 6);
+        }
+      }
+
+      // Chomper
+      if (plant.type === PLANT_TYPES.CHOMPER && plant.state === 'idle') {
+        plant.attackTimer = Math.max(0, plant.attackTimer - dt);
       }
     }
 
@@ -348,15 +557,17 @@ export class Game {
     });
   }
 
-  firePea(plant: Plant) {
+  firePea(plant: Plant, slows: boolean) {
     const s = this.state;
     const pea: Projectile = {
       x: plant.x + 20,
       y: plant.y - 5,
       row: plant.row,
-      damage: PLANT_CONFIG.peashooter.damage,
+      damage: PLANT_CONFIG[plant.type].damage,
       speed: PEA_SPEED,
       alive: true,
+      slows,
+      trail: [],
     };
     s.projectiles.push(pea);
   }
@@ -365,6 +576,13 @@ export class Game {
     const s = this.state;
     for (const pea of s.projectiles) {
       pea.x += pea.speed * dt;
+      if (pea.trail.length === 0 || Math.abs(pea.x - pea.trail[pea.trail.length - 1].x) > 3) {
+        pea.trail.push({ x: pea.x, y: pea.y, alpha: 1 });
+      }
+      for (const t of pea.trail) {
+        t.alpha -= dt * 4;
+      }
+      pea.trail = pea.trail.filter(t => t.alpha > 0);
       if (pea.x > CANVAS_W + 20) {
         pea.alive = false;
       }
@@ -399,6 +617,7 @@ export class Game {
         if (dist < 10) {
           s.sunCount += sun.value;
           sun.state = 'done';
+          this.spawnParticles(60, 15, ['#FFD700', '#FFA500', '#FFEE88'], 5);
         } else {
           const speed = 600;
           sun.x += (dx / dist) * speed * dt;
@@ -422,10 +641,30 @@ export class Game {
     s.particles = s.particles.filter(p => p.life > 0);
   }
 
+  spawnParticles(x: number, y: number, colors: string[], count: number) {
+    const s = this.state;
+    for (let i = 0; i < count; i++) {
+      s.particles.push({
+        x, y,
+        vx: (Math.random() - 0.5) * 150,
+        vy: -Math.random() * 150 - 30,
+        life: 0.3 + Math.random() * 0.4,
+        maxLife: 0.3 + Math.random() * 0.4,
+        size: 2 + Math.random() * 4,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        alpha: 1,
+      });
+    }
+  }
+
   spawnDeathParticles(x: number, y: number, type: ZombieType) {
     const s = this.state;
     const colors = type === 'bucket' ? ['#888', '#666', '#aaa', '#555'] :
                    type === 'cone' ? ['#ff8c00', '#ff6600', '#ffaa00', '#cc5500'] :
+                   type === 'flag' ? ['#ff4444', '#ff6666', '#cc0000', '#ff8888'] :
+                   type === 'polevaulter' ? ['#8888ff', '#6666cc', '#aaaaff', '#7777dd'] :
+                   type === 'newspaper' ? ['#dddddd', '#cccccc', '#bbbbbb', '#aaaaaa'] :
+                   type === 'screendoor' ? ['#999', '#777', '#aaa', '#666'] :
                    ['#6b8e6b', '#8fbc8f', '#556b2f', '#7a8b7a'];
     for (let i = 0; i < 15; i++) {
       s.particles.push({
@@ -469,17 +708,47 @@ export class Game {
         if (zombie.row === pea.row &&
             Math.abs(zombie.x - pea.x) < 25 &&
             Math.abs(zombie.y - pea.y) < 30) {
+          // Screen door: absorb damage
+          if (zombie.type === 'screendoor' && zombie.shieldHp > 0) {
+            zombie.shieldHp -= pea.damage;
+            pea.alive = false;
+            s.particles.push({
+              x: pea.x, y: pea.y,
+              vx: -50, vy: -20,
+              life: 0.2, maxLife: 0.2,
+              size: 3, color: '#cccccc', alpha: 1,
+            });
+            break;
+          }
           zombie.hp -= pea.damage;
           zombie.flashTimer = 0.1;
+          if (pea.slows) {
+            zombie.slowTimer = SLOW_DURATION;
+          }
           pea.alive = false;
           s.particles.push({
             x: pea.x, y: pea.y,
             vx: -50 + Math.random() * 20,
             vy: -30 + Math.random() * 20,
             life: 0.2, maxLife: 0.2,
-            size: 3, color: '#7fff00', alpha: 1,
+            size: 3,
+            color: pea.slows ? '#88ccff' : '#7fff00',
+            alpha: 1,
           });
           break;
+        }
+      }
+    }
+
+    // Mower collision with zombies
+    for (const mower of s.mowers) {
+      if (!mower.triggered || !mower.active) continue;
+      for (const zombie of s.zombies) {
+        if (zombie.state === 'dying') continue;
+        if (zombie.row === mower.row &&
+            Math.abs(zombie.x - mower.x) < 30) {
+          zombie.hp -= 1800;
+          zombie.flashTimer = 0.2;
         }
       }
     }
@@ -487,10 +756,19 @@ export class Game {
 
   checkWinLose() {
     const s = this.state;
+    // Check if any zombie reaches the left side (triggers mower or game over)
     for (const zombie of s.zombies) {
       if (zombie.x < GRID_LEFT - 30 && zombie.state !== 'dying') {
-        s.gameStatus = GAME_STATES.LOST;
-        return;
+        // Check for mower
+        const mower = s.mowers[zombie.row];
+        if (mower && mower.active && !mower.triggered) {
+          mower.triggered = true;
+          s.screenShake = 0.3;
+          this.spawnParticles(zombie.x, zombie.y, ['#ff4444', '#ff0000', '#ff6666'], 10);
+        } else {
+          s.gameStatus = GAME_STATES.LOST;
+          return;
+        }
       }
     }
 
@@ -522,6 +800,7 @@ export class Game {
         plant.stateTimer = 0.3;
         s.grid[row][col] = null;
         s.selectedTool = null;
+        this.spawnParticles(plant.x, plant.y, ['#8B4513', '#6B3410', '#555'], 5);
       }
       return;
     }
@@ -542,11 +821,14 @@ export class Game {
       s.plants.push(plant);
       s.grid[row][col] = plant;
 
+      this.spawnParticles(plant.x, plant.y, ['#88ff88', '#aaffaa', '#66cc66'], 8);
+
       if (s.selectedPlant === PLANT_TYPES.CHERRYBOMB) {
         plant.state = 'exploding';
         plant.stateTimer = 0.8;
         this.spawnExplosionParticles(plant.x, plant.y);
         this.cherryBombExplode(row, col);
+        s.screenShake = 0.5;
       }
 
       s.selectedPlant = null;
@@ -566,7 +848,7 @@ export class Game {
       animTimer: 0,
       animFrame: 0,
       attackTimer: 0,
-      state: 'idle',
+      state: type === PLANT_TYPES.POTATOMINE ? 'idle' : 'idle',
       stateTimer: 0,
       produceTimer: 0,
       swayOffset: 0,
@@ -604,6 +886,25 @@ export class Game {
         }
       }
     }
+  }
+
+  potatoMineExplode(row: number, col: number) {
+    const s = this.state;
+    const radius = POTATO_EXPLOSION_RADIUS;
+
+    for (const zombie of s.zombies) {
+      if (zombie.state === 'dying') continue;
+      const zCol = Math.floor((zombie.x - GRID_LEFT) / CELL_W);
+      if (Math.abs(zombie.row - row) <= radius && Math.abs(zCol - col) <= radius) {
+        zombie.hp -= PLANT_CONFIG.potatomine.damage;
+        zombie.flashTimer = 0.2;
+      }
+    }
+
+    s.screenShake = 0.4;
+    const cx = GRID_LEFT + col * CELL_W + CELL_W / 2;
+    const cy = GRID_TOP + row * CELL_H + CELL_H / 2;
+    this.spawnExplosionParticles(cx, cy);
   }
 
   handleSunClick(sun: Sun) {

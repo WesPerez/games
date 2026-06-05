@@ -1,5 +1,5 @@
 import { Game } from './game';
-import { GRID_LEFT, GRID_TOP, CELL_W, CELL_H, GRID_COLS, GRID_ROWS, TOP_BAR_H, CANVAS_W } from './constants';
+import { GRID_LEFT, GRID_TOP, CELL_W, CELL_H, GRID_COLS, GRID_ROWS, TOP_BAR_H, CANVAS_W, CANVAS_H } from './constants';
 
 export class InputHandler {
   canvas: HTMLCanvasElement;
@@ -18,6 +18,14 @@ export class InputHandler {
       e.preventDefault();
       this.game.clearSelection();
     });
+    document.addEventListener('keydown', (e) => this.onKeyDown(e));
+  }
+
+  onKeyDown(e: KeyboardEvent) {
+    if (e.key === 'p' || e.key === 'P') {
+      e.preventDefault();
+      this.game.togglePause();
+    }
   }
 
   getCanvasPos(e: MouseEvent): { x: number; y: number } {
@@ -50,6 +58,12 @@ export class InputHandler {
     const { x, y } = this.getCanvasPos(e);
     const s = this.game.state;
 
+    // Handle start screen click
+    if (s.screenState === 'start') {
+      this.checkStartScreenClick(x, y);
+      return;
+    }
+
     if (s.gameStatus !== 'playing') {
       this.checkDialogClick(x, y);
       return;
@@ -60,6 +74,18 @@ export class InputHandler {
     if (this.checkGridClick(x, y)) return;
 
     this.game.clearSelection();
+  }
+
+  checkStartScreenClick(x: number, y: number) {
+    // Start button position
+    const btnW = 220;
+    const btnH = 55;
+    const btnX = CANVAS_W / 2 - btnW / 2;
+    const btnY = 340;
+
+    if (x >= btnX && x <= btnX + btnW && y >= btnY && y <= btnY + btnH) {
+      this.game.startGame();
+    }
   }
 
   checkSunClick(x: number, y: number): boolean {

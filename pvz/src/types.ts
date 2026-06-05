@@ -1,6 +1,7 @@
-export type PlantType = 'sunflower' | 'peashooter' | 'wallnut' | 'cherrybomb';
-export type ZombieType = 'normal' | 'cone' | 'bucket';
+export type PlantType = 'sunflower' | 'peashooter' | 'wallnut' | 'cherrybomb' | 'snowpea' | 'repeater' | 'chomper' | 'potatomine' | 'twinsunflower' | 'garlic';
+export type ZombieType = 'normal' | 'cone' | 'bucket' | 'flag' | 'polevaulter' | 'newspaper' | 'screendoor';
 export type GameStatus = 'playing' | 'won' | 'lost' | 'paused';
+export type ScreenState = 'start' | 'playing';
 
 export interface Plant {
   type: PlantType;
@@ -13,7 +14,7 @@ export interface Plant {
   animTimer: number;
   animFrame: number;
   attackTimer: number;
-  state: 'idle' | 'attacking' | 'producing' | 'dying' | 'exploding';
+  state: 'idle' | 'attacking' | 'producing' | 'dying' | 'exploding' | 'chomping' | 'armed' | 'arming';
   stateTimer: number;
   produceTimer: number;
   swayOffset: number;
@@ -28,14 +29,23 @@ export interface Zombie {
   hp: number;
   maxHp: number;
   speed: number;
+  baseSpeed: number;
   damage: number;
   animTimer: number;
   animFrame: number;
-  state: 'walking' | 'attacking' | 'dying';
+  state: 'walking' | 'attacking' | 'dying' | 'running' | 'jumping' | 'vaulting';
   stateTimer: number;
   targetPlant: Plant | null;
   flashTimer: number;
   bobOffset: number;
+  slowTimer: number;
+  newspaperHp: number;
+  newspaperMaxHp: number;
+  shieldHp: number;
+  shieldMaxHp: number;
+  hasFlag: boolean;
+  hasPole: boolean;
+  jumped: boolean;
 }
 
 export interface Projectile {
@@ -45,6 +55,8 @@ export interface Projectile {
   damage: number;
   speed: number;
   alive: boolean;
+  slows: boolean;
+  trail: { x: number; y: number; alpha: number }[];
 }
 
 export interface Sun {
@@ -83,12 +95,22 @@ export interface WaveInfo {
   delay: number;
 }
 
+export interface LawnMower {
+  row: number;
+  x: number;
+  y: number;
+  active: boolean;
+  triggered: boolean;
+  speed: number;
+}
+
 export interface GameState {
   plants: Plant[];
   zombies: Zombie[];
   projectiles: Projectile[];
   suns: Sun[];
   particles: Particle[];
+  mowers: LawnMower[];
   sunCount: number;
   selectedPlant: PlantType | null;
   selectedTool: 'plant' | 'shovel' | null;
@@ -98,6 +120,7 @@ export interface GameState {
   waveActive: boolean;
   waveZombiesRemaining: number;
   gameStatus: GameStatus;
+  screenState: ScreenState;
   sunFallTimer: number;
   plantCards: PlantCard[];
   mouseX: number;
@@ -105,4 +128,8 @@ export interface GameState {
   hoveredCell: { row: number; col: number } | null;
   grid: (Plant | null)[][];
   totalTime: number;
+  screenShake: number;
+  waveAnnouncement: string;
+  waveAnnouncementTimer: number;
+  sunGlowPhase: number;
 }

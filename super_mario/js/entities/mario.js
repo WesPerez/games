@@ -1,8 +1,9 @@
-const MARIO_STATES = { SMALL: 0, BIG: 1, FIRE: 2 };
+const MARIO_STATES = { SMALL: 0, BIG: 1, FIRE: 2, ICE: 3 };
 const MARIO_SIZES = {
     [MARIO_STATES.SMALL]: { w: 16, h: 16 },
     [MARIO_STATES.BIG]:   { w: 16, h: 32 },
-    [MARIO_STATES.FIRE]:  { w: 16, h: 32 }
+    [MARIO_STATES.FIRE]:  { w: 16, h: 32 },
+    [MARIO_STATES.ICE]:   { w: 16, h: 32 }
 };
 
 class Mario {
@@ -94,8 +95,8 @@ class Mario {
         }
         if (!input.isDown('jump')) this.isJumping = false;
 
-        if (this.state === MARIO_STATES.FIRE && input.justPressed('fire') && this.fireCooldown <= 0) {
-            this.shootFireball();
+        if ((this.state === MARIO_STATES.FIRE || this.state === MARIO_STATES.ICE) && input.justPressed('fire') && this.fireCooldown <= 0) {
+            this.shootProjectile();
         }
 
         const originalH = this.h;
@@ -108,16 +109,25 @@ class Mario {
         this.animTimer++;
         if (this.animTimer > 6) { this.animTimer = 0; this.animFrame++; }
     }
-    shootFireball() {
+    shootProjectile() {
         if (typeof game === 'undefined' || !game.fireballs) return;
         if (game.fireballs.length >= 2) return;
         this.fireCooldown = 20;
-        const fb = new Fireball(
-            this.x + (this.facing > 0 ? this.w : -8),
-            this.y + this.h / 2 - 4,
-            this.facing
-        );
-        game.fireballs.push(fb);
+        if (this.state === MARIO_STATES.ICE) {
+            const ib = new IceBall(
+                this.x + (this.facing > 0 ? this.w : -8),
+                this.y + this.h / 2 - 4,
+                this.facing
+            );
+            game.fireballs.push(ib);
+        } else {
+            const fb = new Fireball(
+                this.x + (this.facing > 0 ? this.w : -8),
+                this.y + this.h / 2 - 4,
+                this.facing
+            );
+            game.fireballs.push(fb);
+        }
         game.audio.playSound('fireball');
     }
     takeDamage(audio) {
@@ -149,6 +159,9 @@ class Mario {
         } else if (type === 'fire' && this.state === MARIO_STATES.BIG) {
             this.state = MARIO_STATES.FIRE;
             audio.playSound('powerup');
+        } else if (type === 'ice' && this.state === MARIO_STATES.BIG) {
+            this.state = MARIO_STATES.ICE;
+            audio.playSound('powerup');
         } else if (type === 'mushroom' && this.state >= MARIO_STATES.BIG) {
             this.score += 1000;
             audio.playSound('powerup');
@@ -166,10 +179,14 @@ class Mario {
     }
     getSpriteName() {
         if (this.isDead) {
+            if (this.deathTimer < 60) {
+                return 'mario_death';
+            }
             return 'mario_small_dead';
         }
         const prefix = this.state === MARIO_STATES.SMALL ? 'mario_small' :
-                       this.state === MARIO_STATES.BIG ? 'mario_big' : 'mario_fire';
+                       this.state === MARIO_STATES.BIG ? 'mario_big' :
+                       this.state === MARIO_STATES.FIRE ? 'mario_fire' : 'mario_ice';
         if (this.isCrouching && this.state >= MARIO_STATES.BIG) {
             return 'mario_big_crouch';
         }
@@ -203,5 +220,3 @@ class Mario {
         ctx.restore();
     }
 }
-
-

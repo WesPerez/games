@@ -60,19 +60,41 @@ window.Game = (function() {
     bgImg: null,
     talentNotices: [],
     startedAt: 0,
+    // 新增系统
+    combo: 0,
+    comboTimer: 0,
+    maxCombo: 0,
+    shakeX: 0,
+    shakeY: 0,
+    shakeTimer: 0,
+    autoStart: false,
+    achievementNotices: [],
+    heroXp: 0,
+    heroLevel: 1,
+    beeDrones: [],
+    beeLastSpawn: 0,
+    goldMineTimers: {},
+    shieldBlocks: [],
+    goldTickTimers: {},
   };
 
   const talents = JSON.parse(localStorage.getItem('cd_talents') || '{}');
   const stars = JSON.parse(localStorage.getItem('cd_stars') || '{}');
+  const unlockedAchievements = JSON.parse(localStorage.getItem('cd_achievements') || '{}');
+  const totalStats = JSON.parse(localStorage.getItem('cd_stats') || '{"totalKilled":0,"totalGold":0,"gamesPlayed":0}');
   function saveStars() { localStorage.setItem('cd_stars', JSON.stringify(stars)); }
   function saveTalents() { localStorage.setItem('cd_talents', JSON.stringify(talents)); }
+  function saveAchievements() { localStorage.setItem('cd_achievements', JSON.stringify(unlockedAchievements)); }
+  function saveStats() { localStorage.setItem('cd_stats', JSON.stringify(totalStats)); }
 
   function applyTalents(s) {
     s.startGold = 150;
     s.globalFireRateMul = 1;
+    s.globalDmgMul = 1;
     s.outOfGridHpBonus = 0;
     s.goldBonusPerKill = 0;
     s.heroCdMul = 1;
+    s.towerHpMul = 1;
     GD.TALENTS.forEach(t => { if (talents[t.id]) t.apply(s); });
   }
 
@@ -117,7 +139,25 @@ window.Game = (function() {
     state.hoverCell = null;
     state.waveInProgress = false;
     state.waveQueue = [];
-    state.hero = { x: 9 * TILE, y: 5 * TILE, hp: GD.HERO.baseHp, maxHp: GD.HERO.baseHp, atk: GD.HERO.baseAtk, lastS1: -99999, lastS2: -99999, lastS3: -99999, lastAtk: -99999, target: null };
+    state.combo = 0;
+    state.comboTimer = 0;
+    state.maxCombo = 0;
+    state.shakeX = 0;
+    state.shakeY = 0;
+    state.shakeTimer = 0;
+    state.autoStart = false;
+    state.achievementNotices = [];
+    state.beeDrones = [];
+    state.beeLastSpawn = 0;
+    state.goldMineTimers = {};
+    state.shieldBlocks = [];
+    state.goldTickTimers = {};
+    // 英雄初始化
+    state.heroXp = 0;
+    state.heroLevel = 1;
+    const heroHp = GD.HERO.baseHp;
+    const heroAtk = GD.HERO.baseAtk;
+    state.hero = { x: 9 * TILE, y: 5 * TILE, hp: heroHp, maxHp: heroHp, atk: heroAtk, lastS1: -99999, lastS2: -99999, lastS3: -99999, lastAtk: -99999, target: null, level: 1, xp: 0 };
     state.heroCd = {};
     GD.HERO.skills.forEach(s => state.heroCd[s.id] = 0);
     state.bgImg = IMAGES['bg_' + lv.id];
@@ -128,6 +168,36 @@ window.Game = (function() {
     buildShop();
     buildSkillBar();
     updateHUD();
+    updateWavePreview();
+  }
+
+  function heroGainXp(amount) {
+    if (!state.hero) return;
+    state.hero.xp += amount;
+    state.heroXp = state.hero.xp;
+    const xpTable = GD.HERO.xpPerLevel;
+    while (state.hero.level < xpTable.length - 1 && state.hero.xp >= xpTable[state.hero.level]) {
+      state.hero.level++;
+      state.heroLevel = state.hero.level;
+      state.hero.maxHp += GD.HERO.levelUpBonus.hp;
+      state.hero.hp = Math.min(state.hero.hp + GD.HERO.levelUpBonus.hp, state.hero.maxHp);
+      state.hero.atk += GD.HERO.levelUpBonus.atk;
+      state.particles.push({ x: state.hero.x, y: state.hero.y, vx: 0, vy: 0, life: 0.6, maxLife: 0.6, color: '#ffd700', size: 80, kind: 'ring' });
+      showWaveBanner('⭐ 英雄升级! Lv.' + state.hero.level);
+    }
+    checkAchievements();
+  }
+
+  function checkAchievements() {
+    if (!GD.ACHIEVEMENTS) return;
+    GD.ACHIEVEMENTS.forEach(a => {
+      if (unlockedAchievements[a.id]) return;
+      if (a.check(state)) {
+        unlockedAchievements[a.id] = true;
+        saveAchievements();
+        state.achievementNotices.push({ text: a.icon + ' ' + a.name + ' - ' + a.desc, life: 3.5, maxLife: 3.5 });
+      }
+    });
   }
 
   function buildSkillBar() {
@@ -166,11 +236,13 @@ window.Game = (function() {
       bornAt: performance.now(),
       maxHp: 50,
       hp: 50,
-      outOfGrid: ['T09', 'T16', 'T24', 'T27'].includes(typeId),
+      outOfGrid: ['T09', 'T16', 'T24', 'T27', 'T35', 'T36'].includes(typeId),
     };
-    if (t.outOfGrid) { t.hp += (GD.globalFireRateMul ? 0 : 0); t.hp += (state.outOfGridHpBonus || 0); t.maxHp = t.hp; }
+    if (t.outOfGrid) { t.hp += (state.outOfGridHpBonus || 0); t.maxHp = t.hp; }
+    if (state.towerHpMul) { t.hp = Math.floor(t.hp * state.towerHpMul); t.maxHp = t.hp; }
     state.towers.push(t);
     state.particles.push({ x: t.x, y: t.y, vx: 0, vy: 0, life: 0.3, maxLife: 0.3, color: '#fff5d6', size: 60, kind: 'ring' });
+    checkAchievements();
     return true;
   }
 
@@ -211,41 +283,87 @@ window.Game = (function() {
       elapsed: 0,
       ability: cfg.ability,
       t: 0,
+      dodge: cfg.dodge || 0,
+      shieldActive: 0,
+      stunned: 0,
     };
     if (cfg.boss) e.size = 36;
+    if (cfg.sticky) e.sticky = true;
     state.enemies.push(e);
   }
 
   function applyDamage(e, dmg, slow, slowDur, burn, isCrit) {
     if (e.dying > 0) return;
+    if (e.stunned > 0) return;
+    // 闪避
+    if (e.dodge && Math.random() < e.dodge) {
+      state.damageNumbers.push({ x: e.x, y: e.y - e.size - 4, value: 'MISS', life: 0.7, maxLife: 0.7, color: '#b2bec3', crit: false });
+      return;
+    }
     let actual = dmg;
+    if (state.globalDmgMul) actual *= state.globalDmgMul;
     if (e.armor) actual = Math.max(1, actual - e.armor);
     e.hp -= actual;
     e.hitFlash = 0.15;
     if (slow) e.slowUntil = performance.now() + slowDur;
     state.damageNumbers.push({ x: e.x, y: e.y - e.size - 4, value: Math.round(actual), life: 0.9, maxLife: 0.9, color: isCrit ? '#ffd700' : (slow ? '#74b9ff' : (burn ? '#ff7675' : '#fff')), crit: isCrit });
     if (e.hp <= 0) {
-      const bonus = (state.goldBonusPerKill || 0);
-      state.gold += e.gold + bonus;
-      state.totalKilled++;
-      spawnDeathParticles(e.x, e.y, e.cfg);
-      if (e.cfg.split) {
-        for (let i = 0; i < e.cfg.split.count; i++) {
-          setTimeout(() => spawnMonster(e.cfg.split.id), i * 80);
-        }
-      }
-      e.dying = 0.4;
+      killEnemy(e);
     }
   }
 
-  function spawnDeathParticles(x, y, cfg) {
-    const color = cfg.cat === 'slime' ? '#00b894' : cfg.cat === 'beast' ? '#6c5ce7' : cfg.cat === 'plant' ? '#55a630' : cfg.cat === 'undead' ? '#dfe6e9' : cfg.cat === 'elemental' ? '#ff7675' : '#fab1a0';
-    for (let i = 0; i < 10; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const s = 80 + Math.random() * 100;
-      state.particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 30, life: 0.7, maxLife: 0.7, color, size: 3 + Math.random() * 4, kind: 'star' });
+  function killEnemy(e) {
+    const bonus = (state.goldBonusPerKill || 0);
+    state.gold += e.gold + bonus;
+    state.totalKilled++;
+    totalStats.totalKilled++;
+    totalStats.totalGold += e.gold + bonus;
+    saveStats();
+    // 连杀系统
+    const now = performance.now();
+    if (now - state.comboTimer < 2000) {
+      state.combo++;
+      if (state.combo > state.maxCombo) state.maxCombo = state.combo;
+    } else {
+      state.combo = 1;
     }
-    for (let i = 0; i < 3; i++) {
+    state.comboTimer = now;
+    // 英雄经验
+    heroGainXp(e.gold);
+    // Boss死亡震动
+    if (e.boss) {
+      state.shakeTimer = 0.5;
+      state.shakeX = 12;
+      state.shakeY = 8;
+      for (let i = 0; i < 30; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const s = 120 + Math.random() * 200;
+        state.particles.push({ x: e.x, y: e.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 60, life: 1.2, maxLife: 1.2, color: '#ffd700', size: 4 + Math.random() * 6, kind: 'star' });
+      }
+      state.particles.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 0.6, maxLife: 0.6, color: '#ff7675', size: 200, kind: 'shockwave' });
+    }
+    spawnDeathParticles(e.x, e.y, e.cfg);
+    if (e.cfg.split) {
+      for (let i = 0; i < e.cfg.split.count; i++) {
+        setTimeout(() => spawnMonster(e.cfg.split.id), i * 80);
+      }
+    }
+    // 糖果怪死后留糖浆
+    if (e.cfg.sticky) {
+      state.particles.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 3, maxLife: 3, color: 'rgba(255,150,200,0.3)', size: 60, kind: 'sticky_pool' });
+    }
+    e.dying = 0.4;
+    checkAchievements();
+  }
+
+  function spawnDeathParticles(x, y, cfg) {
+    const color = cfg.cat === 'slime' ? '#00b894' : cfg.cat === 'beast' ? '#6c5ce7' : cfg.cat === 'plant' ? '#55a630' : cfg.cat === 'undead' ? '#dfe6e9' : cfg.cat === 'elemental' ? '#ff7675' : cfg.cat === 'insect' ? '#a29bfe' : cfg.cat === 'humanoid' ? '#fdcb6e' : cfg.cat === 'mechanical' ? '#74b9ff' : cfg.cat === 'aquatic' ? '#81ecec' : '#fab1a0';
+    for (let i = 0; i < 12; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const s = 80 + Math.random() * 120;
+      state.particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 30, life: 0.7 + Math.random() * 0.3, maxLife: 0.7, color, size: 3 + Math.random() * 5, kind: 'star' });
+    }
+    for (let i = 0; i = 4; i++) {
       state.coins.push({ x, y, vy: -180 - Math.random() * 60, life: 1.2, maxLife: 1.2, value: 5, color: '#ffd700' });
     }
   }
@@ -269,7 +387,7 @@ window.Game = (function() {
   function canTowerHit(t, e) {
     if (e.flying) {
       const atk = GD.TOWERS[t.typeId].category;
-      if (!['magical', 'elemental', 'dark', 'tech'].includes(atk) && t.typeId !== 'T01') return false;
+      if (!['magical', 'elemental', 'dark', 'tech'].includes(atk) && t.typeId !== 'T01' && t.typeId !== 'T32') return false;
     }
     return true;
   }
@@ -289,13 +407,15 @@ window.Game = (function() {
     const angle = Math.atan2(target.y - t.y, target.x - t.x);
     const muzzleX = t.x + Math.cos(angle) * 18;
     const muzzleY = t.y + Math.sin(angle) * 18;
-    const color = cfg.category === 'magical' ? '#a29bfe' : cfg.category === 'elemental' ? '#74b9ff' : cfg.category === 'dark' ? '#6c5ce7' : '#fdcb6e';
+    const color = cfg.category === 'magical' ? '#a29bfe' : cfg.category === 'elemental' ? '#74b9ff' : cfg.category === 'dark' ? '#6c5ce7' : cfg.category === 'tech' ? '#00cec9' : '#fdcb6e';
     const projSize = 6 + cfg.dmg * 0.04;
+    const isCrit = cfg.category === 'physical' && Math.random() < 0.15;
+    const dmg = isCrit ? cfg.dmg * 2 : cfg.dmg;
     state.projectiles.push({
       x: muzzleX, y: muzzleY,
       vx: Math.cos(angle) * 320, vy: Math.sin(angle) * 320,
       target,
-      damage: cfg.dmg,
+      damage: dmg,
       color,
       size: projSize,
       kind: cfg.category,
@@ -303,6 +423,7 @@ window.Game = (function() {
       pierce: 0,
       slow: cfg.special && cfg.special.includes('减速') ? 0.4 : (cfg.special && cfg.special.includes('黏液') ? 0.5 : 0),
       slowDur: cfg.special && cfg.special.includes('3s') ? 3000 : 2000,
+      isCrit,
     });
     t.recoil = 1;
     state.particles.push({ x: muzzleX, y: muzzleY, vx: 0, vy: 0, life: 0.15, maxLife: 0.15, color, size: 18, kind: 'muzzle' });
@@ -317,6 +438,8 @@ window.Game = (function() {
     state.scene = won ? 'won' : 'lost';
     const timeSec = (performance.now() - state.startedAt) / 1000;
     const lv = state.level;
+    totalStats.gamesPlayed++;
+    saveStats();
     let earned = 0;
     if (won) {
       earned = 1;
@@ -338,6 +461,7 @@ window.Game = (function() {
         }
       }
     }
+    checkAchievements();
     showResultModal(won, earned, timeSec);
   }
 
@@ -359,6 +483,26 @@ window.Game = (function() {
     state.selectedTowerType = null;
     showWaveBanner('🌊 第 ' + state.wave + ' / ' + state.level.waves.length + ' 波');
     updateHUD();
+    updateWavePreview();
+  }
+
+  function updateWavePreview() {
+    const el = document.getElementById('wavePreview');
+    if (!el || !state.level) return;
+    const nextWaveIdx = state.wave;
+    if (nextWaveIdx >= state.level.waves.length) {
+      el.innerHTML = '<span style="color:#636e72">最终波!</span>';
+      return;
+    }
+    const wave = state.level.waves[nextWaveIdx];
+    const names = wave.monsters.map(g => {
+      const cfg = GD.MONSTERS[g.id];
+      return (cfg ? cfg.name : g.id) + '×' + g.count;
+    }).join(' ');
+    let html = '<span style="font-size:11px;color:#636e72;">下一波: </span>';
+    html += '<span style="font-size:11px;color:#d35400;font-weight:bold;">' + names + '</span>';
+    if (wave.boss) html += ' <span style="color:#d63031;">👑BOSS</span>';
+    el.innerHTML = html;
   }
 
   function update(dt) {
@@ -367,8 +511,29 @@ window.Game = (function() {
     const eff = state.speedMul;
     const eDt = dt * eff;
     state.t = (state.t || 0) + eDt;
-    state.startedAt = state.startedAt;
 
+    // 屏幕震动
+    if (state.shakeTimer > 0) {
+      state.shakeTimer -= eDt;
+      state.shakeX = Math.sin(now * 0.06) * 12 * (state.shakeTimer / 0.5);
+      state.shakeY = Math.cos(now * 0.07) * 8 * (state.shakeTimer / 0.5);
+    } else {
+      state.shakeX = 0;
+      state.shakeY = 0;
+    }
+
+    // 连杀计时器
+    if (state.comboTimer > 0 && now - state.comboTimer > 2000) {
+      state.combo = 0;
+    }
+
+    // 成就通知计时器
+    for (let i = state.achievementNotices.length - 1; i >= 0; i--) {
+      state.achievementNotices[i].life -= eDt;
+      if (state.achievementNotices[i].life <= 0) state.achievementNotices.splice(i, 1);
+    }
+
+    // 出怪
     if (state.waveInProgress === true && state.waveQueue.length) {
       const next = state.waveQueue[0];
       if (now - state.waveStartTime >= next.delay / eff) {
@@ -378,6 +543,7 @@ window.Game = (function() {
       }
     }
 
+    // 敌人移动
     for (let i = state.enemies.length - 1; i >= 0; i--) {
       const e = state.enemies[i];
       e.t += eDt;
@@ -386,6 +552,8 @@ window.Game = (function() {
         if (e.dying <= 0) state.enemies.splice(i, 1);
         continue;
       }
+      if (e.stunned > 0) { e.stunned -= eDt; continue; }
+      if (e.shieldActive > 0) e.shieldActive -= eDt;
       const wp = (e.flying && state.airWaypoints.length) ? state.airWaypoints : state.waypoints;
       if (e.segment >= wp.length - 1) {
         state.lives -= e.boss ? 5 : 1;
@@ -407,9 +575,104 @@ window.Game = (function() {
       if (e.boss && e.t > 5) e.t = 0;
     }
 
+    // 护盾塔效果
+    for (const sb of state.shieldBlocks) {
+      sb.life -= eDt;
+      for (const e of state.enemies) {
+        if (e.dying > 0) continue;
+        const dx = e.x - sb.x, dy = e.y - sb.y;
+        if (Math.abs(dx) < TILE && Math.abs(dy) < TILE) {
+          e.slowUntil = Math.max(e.slowUntil, now + 200);
+        }
+      }
+    }
+    state.shieldBlocks = state.shieldBlocks.filter(sb => sb.life > 0);
+
+    // 传送带/粘液池粒子
+    for (let i = state.particles.length - 1; i >= 0; i--) {
+      const p = state.particles[i];
+      if (p.kind === 'sticky_pool') {
+        p.life -= eDt;
+        for (const e of state.enemies) {
+          if (e.dying > 0) continue;
+          if (Math.hypot(e.x - p.x, e.y - p.y) < p.size * 0.5) {
+            e.slowUntil = Math.max(e.slowUntil, now + 500);
+          }
+        }
+      }
+    }
+
+    // 金矿塔产金
+    for (const t of state.towers) {
+      if (t.typeId === 'T36') {
+        const key = t.col + ',' + t.row;
+        if (!state.goldTickTimers[key]) state.goldTickTimers[key] = 0;
+        state.goldTickTimers[key] += eDt;
+        const interval = t.tier >= 3 ? 3 : t.tier >= 2 ? 3 : 4;
+        const amount = t.tier >= 3 ? 50 : t.tier >= 2 ? 40 : 30;
+        if (state.goldTickTimers[key] >= interval) {
+          state.goldTickTimers[key] -= interval;
+          state.gold += amount;
+          state.coins.push({ x: t.x, y: t.y - 10, vy: -120, life: 1, maxLife: 1, value: amount, color: '#ffd700' });
+        }
+      }
+    }
+
+    // 蜜蜂塔召蜜蜂
+    for (const t of state.towers) {
+      if (t.typeId !== 'T37') continue;
+      const maxBees = t.tier >= 3 ? 4 : t.tier >= 2 ? 3 : 2;
+      const spawnInterval = t.tier >= 2 ? 4 : 5;
+      const myBees = state.beeDrones.filter(b => b.parentTower === t);
+      if (myBees.length < maxBees && now - (state.beeLastSpawn || 0) > spawnInterval * 1000) {
+        state.beeLastSpawn = now;
+        state.beeDrones.push({ x: t.x, y: t.y, parentTower: t, target: null, lastHit: 0, dmg: t.tier >= 3 ? 15 : t.tier >= 2 ? 12 : 8, life: 999, angle: 0 });
+        state.particles.push({ x: t.x, y: t.y, vx: 0, vy: 0, life: 0.3, maxLife: 0.3, color: '#fdcb6e', size: 30, kind: 'muzzle' });
+      }
+    }
+    // 蜜蜂AI
+    for (const bee of state.beeDrones) {
+      if (!bee.target || bee.target.dying > 0 || !state.enemies.includes(bee.target)) {
+        let nearest = null, nd = 9999;
+        for (const e of state.enemies) {
+          if (e.dying > 0) continue;
+          const d = Math.hypot(e.x - bee.x, e.y - bee.y);
+          if (d < nd && d < 200) { nd = d; nearest = e; }
+        }
+        bee.target = nearest;
+      }
+      if (bee.target) {
+        const dx = bee.target.x - bee.x, dy = bee.target.y - bee.y;
+        const dist = Math.hypot(dx, dy);
+        bee.angle = Math.atan2(dy, dx);
+        if (dist > 2) { bee.x += (dx / dist) * 100 * eDt; bee.y += (dy / dist) * 100 * eDt; }
+        if (dist < 30 && now - bee.lastHit > 600) {
+          applyDamage(bee.target, bee.dmg, 0, 0, false, false);
+          bee.lastHit = now;
+        }
+      } else {
+        const t = bee.parentTower;
+        if (t) {
+          const dx = t.x - bee.x, dy = t.y - bee.y;
+          bee.x += dx * 0.5 * eDt;
+          bee.y += dy * 0.5 * eDt;
+        }
+      }
+    }
+
+    // 塔攻击
     for (const t of state.towers) {
       const cfg = getTowerCfg(t);
       if (t.recoil > 0) t.recoil = Math.max(0, t.recoil - eDt * 5);
+      if (t.typeId === 'T35') {
+        // 护盾塔：定期生成路障
+        if (!t.lastShield || now - t.lastShield > 5000) {
+          t.lastShield = now;
+          state.shieldBlocks.push({ x: t.x, y: t.y, life: 3, col: t.col, row: t.row });
+          state.particles.push({ x: t.x, y: t.y, vx: 0, vy: 0, life: 0.3, maxLife: 0.3, color: '#74b9ff', size: 50, kind: 'ring' });
+        }
+        continue;
+      }
       const target = findTarget(t);
       if (target) {
         t.angle = Math.atan2(target.y - t.y, target.x - t.x);
@@ -421,6 +684,7 @@ window.Game = (function() {
       }
     }
 
+    // 弹丸移动
     for (let i = state.projectiles.length - 1; i >= 0; i--) {
       const p = state.projectiles[i];
       if (p.target && state.enemies.includes(p.target) && p.target.dying <= 0) {
@@ -451,16 +715,17 @@ window.Game = (function() {
       }
       if (hit) {
         const target = state.enemies.find(e => !e.dying && Math.hypot(e.x - p.x, e.y - p.y) < e.size);
-        if (target) applyDamage(target, p.damage, p.slow, p.slowDur, p.kind === 'elemental', p.kind === 'physical' && Math.random() < 0.15);
+        if (target) applyDamage(target, p.damage, p.slow, p.slowDur, p.kind === 'elemental', p.isCrit);
         state.projectiles.splice(i, 1);
       } else if (p.x < -50 || p.x > PLAY_W + 50 || p.y < -50 || p.y > PLAY_H + 50) {
         state.projectiles.splice(i, 1);
       }
     }
 
+    // 粒子更新
     for (let i = state.particles.length - 1; i >= 0; i--) {
       const p = state.particles[i];
-      if (p.kind === 'muzzle' || p.kind === 'shockwave' || p.kind === 'ring') {
+      if (p.kind === 'muzzle' || p.kind === 'shockwave' || p.kind === 'ring' || p.kind === 'sticky_pool') {
         p.life -= eDt;
       } else {
         p.x += p.vx * eDt; p.y += p.vy * eDt;
@@ -484,6 +749,7 @@ window.Game = (function() {
       if (d.life <= 0) state.damageNumbers.splice(i, 1);
     }
 
+    // 波结束检测
     if (state.waveInProgress === 'spawning_done' && state.enemies.filter(e => e.dying <= 0).length === 0) {
       state.waveInProgress = false;
       if (state.wave >= state.level.waves.length) {
@@ -491,8 +757,14 @@ window.Game = (function() {
         return;
       }
       updateHUD();
+      updateWavePreview();
+      // 自动开始下一波
+      if (state.autoStart && state.scene === 'playing') {
+        setTimeout(() => { if (state.scene === 'playing' && !state.waveInProgress && !state.paused) startWave(); }, 1500);
+      }
     }
 
+    // 英雄AI
     if (state.hero) {
       const h = state.hero;
       const cdMul = state.heroCdMul || 1;
@@ -567,16 +839,47 @@ window.Game = (function() {
 
     if (state.scene === 'menu' || state.scene === 'levelSelect' || state.scene === 'talents') {
       renderBg();
-      renderCenterText();
-      return;
-    }
-    if (state.scene === 'won' || state.scene === 'lost') {
-      renderBg();
-      renderPlaying();
       return;
     }
 
+    ctx.save();
+    if (state.shakeX !== 0 || state.shakeY !== 0) {
+      ctx.translate(state.shakeX, state.shakeY);
+    }
+
     renderPlaying();
+
+    ctx.restore();
+
+    // 渲染暂停覆盖层
+    if (state.paused && state.scene === 'playing') {
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 36px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('⏸ 已暂停', W / 2, H / 2 - 20);
+      ctx.font = '16px sans-serif';
+      ctx.fillText('点击继续按钮或按 P 键', W / 2, H / 2 + 24);
+    }
+
+    // 成就通知
+    for (let i = 0; i < state.achievementNotices.length; i++) {
+      const n = state.achievementNotices[i];
+      const t = Math.min(1, n.life / n.maxLife);
+      const alpha = t < 0.2 ? t / 0.2 : 1;
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = 'rgba(0,0,0,0.8)';
+      const tw = ctx.measureText(n.text).width + 40;
+      ctx.fillRect(PLAY_W / 2 - tw / 2, 60 + i * 40, tw, 32);
+      ctx.fillStyle = '#ffd700';
+      ctx.font = 'bold 14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(n.text, PLAY_W / 2, 76 + i * 40);
+      ctx.globalAlpha = 1;
+    }
   }
 
   function renderBg() {
@@ -589,17 +892,17 @@ window.Game = (function() {
       ctx.fillRect(0, 0, PLAY_W, PLAY_H);
     }
     if (IMAGES.carrot) {
-      const breathe = 1 + Math.sin(now * 0.0025) * 0.05;
+      const breathe = 1 + Math.sin(now() * 0.0025) * 0.05;
       drawSprite(IMAGES.carrot, PLAY_W / 2, PLAY_H / 2, 200, 1, breathe, 0, '#fff5d6');
     }
   }
   function now() { return performance.now(); }
-  function renderCenterText() {}
+
   function renderPlaying() {
     if (state.level) {
-        const lv = state.level;
-        if (state.bgImg) ctx.drawImage(state.bgImg, 0, 0, PLAY_W, PLAY_H);
-        else {
+      const lv = state.level;
+      if (state.bgImg) ctx.drawImage(state.bgImg, 0, 0, PLAY_W, PLAY_H);
+      else {
         const grad = ctx.createLinearGradient(0, 0, 0, PLAY_H);
         grad.addColorStop(0, lv.bgColor1);
         grad.addColorStop(1, lv.bgColor2);
@@ -614,6 +917,7 @@ window.Game = (function() {
           }
         }
       }
+      // 路径
       for (const [c, r] of lv.path) {
         const x = c * TILE, y = r * TILE;
         const grad = ctx.createLinearGradient(x, y, x + TILE, y + TILE);
@@ -626,6 +930,14 @@ window.Game = (function() {
       ctx.lineWidth = 2;
       for (const [c, r] of lv.path) ctx.strokeRect(c * TILE + 1, r * TILE + 1, TILE - 2, TILE - 2);
 
+      // 路径方向指示（流动动画）
+      ctx.fillStyle = 'rgba(255,255,255,0.25)';
+      const t = (performance.now() * 0.0005) % 1;
+      for (let i = 0; i < Math.min(lv.path.length, 5); i++) {
+        const [c, r] = lv.path[Math.floor((i + t * lv.path.length) % lv.path.length)];
+        ctx.fillRect(c * TILE + 10, r * TILE + 10, 12, 12);
+      }
+
       if (lv.airPath) {
         ctx.fillStyle = 'rgba(160, 200, 255, 0.18)';
         for (const [c, r] of lv.airPath) ctx.fillRect(c * TILE, r * TILE, TILE, TILE);
@@ -635,6 +947,17 @@ window.Game = (function() {
         ctx.setLineDash([]);
       }
 
+      // 路障渲染
+      for (const sb of state.shieldBlocks) {
+        const alpha = Math.min(1, sb.life / 3);
+        ctx.fillStyle = 'rgba(116, 185, 255, ' + (alpha * 0.5) + ')';
+        ctx.fillRect(sb.x - TILE / 2, sb.y - TILE / 2, TILE, TILE);
+        ctx.strokeStyle = 'rgba(116, 185, 255, ' + alpha + ')';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(sb.x - TILE / 2 + 2, sb.y - TILE / 2 + 2, TILE - 4, TILE - 4);
+      }
+
+      // 放置预览
       if (state.hoverCell && state.selectedTowerType) {
         const { col, row } = state.hoverCell;
         const cfg = GD.TOWERS[state.selectedTowerType];
@@ -651,6 +974,13 @@ window.Game = (function() {
           ctx.setLineDash([]);
           ctx.fillStyle = 'rgba(108, 92, 231, 0.25)';
           ctx.fillRect(col * TILE + 4, row * TILE + 4, TILE - 8, TILE - 8);
+          // Ghost tower preview
+          const ghostImg = IMAGES[state.selectedTowerType];
+          if (ghostImg) {
+            ctx.globalAlpha = 0.4;
+            ctx.drawImage(ghostImg, cx - TILE / 2, cy - TILE / 2, TILE, TILE);
+            ctx.globalAlpha = 1;
+          }
         } else {
           ctx.fillStyle = 'rgba(214, 48, 49, 0.3)';
           ctx.fillRect(col * TILE, row * TILE, TILE, TILE);
@@ -665,10 +995,12 @@ window.Game = (function() {
         }
       }
 
+      // 萝卜
       const last = lv.path[lv.path.length - 1];
       const carrotBreathe = 1 + Math.sin(now() * 0.0025) * 0.05;
       drawSprite(state.carrotImg || IMAGES.carrot, last[0] * TILE + TILE / 2, last[1] * TILE + TILE / 2, TILE * 1.3, 1, carrotBreathe, 0, '#fff5d6');
 
+      // 塔
       for (const t of state.towers) {
         const cfg = getTowerCfg(t);
         const recoilOffset = Math.sin(t.recoil * Math.PI) * 6;
@@ -697,6 +1029,27 @@ window.Game = (function() {
         }
       }
 
+      // 蜜蜂
+      for (const bee of state.beeDrones) {
+        ctx.fillStyle = '#fdcb6e';
+        ctx.beginPath();
+        ctx.arc(bee.x, bee.y, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#2d3436';
+        ctx.beginPath();
+        ctx.arc(bee.x + 2, bee.y - 2, 2, 0, Math.PI * 2);
+        ctx.fill();
+        // 翅膀
+        ctx.fillStyle = 'rgba(255,255,255,0.6)';
+        ctx.beginPath();
+        ctx.ellipse(bee.x - 3, bee.y - 5, 4, 2, -0.3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(bee.x + 3, bee.y - 5, 4, 2, 0.3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // 敌人
       for (const e of state.enemies) {
         if (e.dying > 0) {
           const progress = 1 - e.dying / 0.4;
@@ -732,8 +1085,16 @@ window.Game = (function() {
           ctx.textAlign = 'center';
           ctx.fillText('✈', e.x, e.y + bobY - e.size - 14);
         }
+        if (e.shieldActive > 0) {
+          ctx.strokeStyle = 'rgba(116, 185, 255, 0.8)';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(e.x, e.y + bobY, e.size * 1.2, 0, Math.PI * 2);
+          ctx.stroke();
+        }
       }
 
+      // 弹丸
       for (const p of state.projectiles) {
         for (const t of (p.trail || [])) {
           const a = (t.life / 0.18) * 0.5;
@@ -747,6 +1108,10 @@ window.Game = (function() {
         ctx.save();
         ctx.shadowColor = p.color;
         ctx.shadowBlur = 12;
+        if (p.isCrit) {
+          ctx.shadowBlur = 20;
+          ctx.shadowColor = '#ffd700';
+        }
         ctx.fillStyle = p.color;
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
@@ -758,6 +1123,7 @@ window.Game = (function() {
         ctx.restore();
       }
 
+      // 粒子
       for (const p of state.particles) {
         const t = p.life / p.maxLife;
         ctx.globalAlpha = Math.max(0, t);
@@ -777,6 +1143,11 @@ window.Game = (function() {
           ctx.fillStyle = p.color;
           ctx.beginPath();
           ctx.arc(p.x, p.y, p.size * t, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (p.kind === 'sticky_pool') {
+          ctx.fillStyle = p.color;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size * (0.5 + t * 0.5), 0, Math.PI * 2);
           ctx.fill();
         } else if (p.kind === 'star') {
           ctx.fillStyle = p.color;
@@ -803,6 +1174,7 @@ window.Game = (function() {
       }
       ctx.globalAlpha = 1;
 
+      // 金币
       for (const c of state.coins) {
         const t = c.life / c.maxLife;
         ctx.globalAlpha = t;
@@ -817,6 +1189,7 @@ window.Game = (function() {
       }
       ctx.globalAlpha = 1;
 
+      // 伤害数字
       for (const d of state.damageNumbers) {
         const t = d.life / d.maxLife;
         ctx.globalAlpha = t;
@@ -831,6 +1204,7 @@ window.Game = (function() {
       }
       ctx.globalAlpha = 1;
 
+      // 英雄
       if (state.hero) {
         const h = state.hero;
         const halo = 'rgba(255, 200, 100, 0.4)';
@@ -840,9 +1214,15 @@ window.Game = (function() {
         ctx.fillRect(h.x - hpW / 2 - 1, h.y - TILE / 2 - 12 - 1, hpW + 2, hpH + 2);
         ctx.fillStyle = '#ff7675';
         ctx.fillRect(h.x - hpW / 2, h.y - TILE / 2 - 12, hpW * (h.hp / h.maxHp), hpH);
+        // 英雄等级
+        ctx.fillStyle = '#ffd700';
+        ctx.font = 'bold 10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Lv.' + h.level, h.x, h.y - TILE / 2 - 18);
       }
     }
 
+    // HUD
     ctx.fillStyle = 'rgba(255,255,255,0.92)';
     ctx.fillRect(PLAY_W, 0, HUD_W, H);
     ctx.strokeStyle = '#5b8a3a';
@@ -855,14 +1235,27 @@ window.Game = (function() {
     ctx.textAlign = 'center';
     ctx.fillText('🥕 ' + state.lives, PLAY_W + HUD_W / 2, 26);
     ctx.fillText('🪙 ' + state.gold, PLAY_W + HUD_W / 2, 52);
-    ctx.fillText('波 ' + state.wave + '/' + state.level.waves.length, PLAY_W + HUD_W / 2, 78);
+    ctx.fillText('波 ' + state.wave + '/' + (state.level ? state.level.waves.length : 0), PLAY_W + HUD_W / 2, 78);
     if (state.hero) {
       const h = state.hero;
       ctx.font = '11px sans-serif';
       ctx.fillStyle = '#5a3e36';
-      ctx.fillText('HP ' + h.hp + '/' + h.maxHp, PLAY_W + HUD_W / 2, 100);
+      ctx.fillText('HP ' + Math.floor(h.hp) + '/' + h.maxHp, PLAY_W + HUD_W / 2, 100);
+      ctx.fillText('Lv.' + h.level + ' XP:' + h.xp, PLAY_W + HUD_W / 2, 116);
     }
-    const btnY = H - 30;
+    // 连杀
+    if (state.combo >= 3) {
+      ctx.fillStyle = state.combo >= 10 ? '#ff7675' : state.combo >= 5 ? '#fdcb6e' : '#fff';
+      ctx.font = 'bold 16px sans-serif';
+      ctx.fillText('COMBO x' + state.combo, PLAY_W + HUD_W / 2, 138);
+    }
+    // 速度指示
+    ctx.fillStyle = state.speedMul >= 2 ? '#ff7675' : '#636e72';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.fillText(state.speedMul + 'x', PLAY_W + HUD_W / 2, 158);
+
+    // 暂停/速度按钮
+    const btnY = H - 56;
     ctx.fillStyle = state.paused ? '#b2bec3' : '#fdcb6e';
     ctx.fillRect(PLAY_W + 10, btnY, HUD_W - 20, 24);
     ctx.fillStyle = '#fff';
@@ -870,6 +1263,18 @@ window.Game = (function() {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(state.paused ? '▶ 继续' : '⏸ 暂停', PLAY_W + HUD_W / 2, btnY + 12);
+
+    // 速度切换
+    const speedY = H - 28;
+    ctx.fillStyle = state.speedMul === 1 ? '#e17055' : '#b2bec3';
+    ctx.fillRect(PLAY_W + 10, speedY, 50, 22);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 10px sans-serif';
+    ctx.fillText('1x', PLAY_W + 35, speedY + 11);
+    ctx.fillStyle = state.speedMul === 2 ? '#e17055' : '#b2bec3';
+    ctx.fillRect(PLAY_W + 62, speedY, 50, 22);
+    ctx.fillStyle = '#fff';
+    ctx.fillText('2x', PLAY_W + 87, speedY + 11);
   }
 
   function showWaveBanner(text) {
@@ -887,19 +1292,24 @@ window.Game = (function() {
     const title = document.getElementById('resultTitle');
     const text = document.getElementById('resultText');
     const stats = document.getElementById('resultStats');
+    const starsEl = document.getElementById('resultStars');
+    const retryBtn = document.getElementById('resultRetry');
+    const menuBtn = document.getElementById('resultMenu');
     if (won) {
       title.textContent = '🎉 胜利！';
-      let s = '消灭了 ' + state.totalKilled + ' 怪,用时 ' + Math.floor(timeSec) + 's';
-      if (starsEarned > 0) s += '  ⭐'.repeat(starsEarned);
+      let s = '消灭了 ' + state.totalKilled + ' 怪, 用时 ' + Math.floor(timeSec) + 's';
+      if (state.maxCombo >= 3) s += '  最高连杀: ' + state.maxCombo;
       text.textContent = '你成功保护了萝卜！';
       stats.textContent = s;
+      if (starsEl) starsEl.innerHTML = '⭐'.repeat(Math.max(0, starsEarned)) + '<span style="color:#ccc">' + '⭐'.repeat(3 - Math.max(0, starsEarned)) + '</span>';
     } else {
       title.textContent = '💔 失败';
       text.textContent = '萝卜被吃掉了…';
-      stats.textContent = `消灭了 ${state.totalKilled} 个怪物`;
+      stats.textContent = `消灭了 ${state.totalKilled} 个怪物 | 最高连杀: ${state.maxCombo}`;
+      if (starsEl) starsEl.innerHTML = '';
     }
-    const btn = overlay.querySelector('button');
-    if (btn) btn.onclick = () => { overlay.classList.add('hidden'); showLevelSelect(); };
+    if (retryBtn) retryBtn.onclick = () => { overlay.classList.add('hidden'); setLevel(state.level); };
+    if (menuBtn) menuBtn.onclick = () => { overlay.classList.add('hidden'); showLevelSelect(); };
     overlay.classList.remove('hidden');
   }
 
@@ -931,22 +1341,21 @@ window.Game = (function() {
     if (!shop) return;
     shop.innerHTML = '';
     const allowed = state.level.allowedTowers;
-    allowed.forEach(id => {
+    allowed.forEach((id, idx) => {
       const cfg = GD.TOWERS[id];
       const card = document.createElement('div');
       card.className = 'card';
       card.dataset.tower = id;
+      card.dataset.index = idx;
       const img = document.createElement('img');
       img.className = 'card-img';
       img.alt = cfg.name;
-      // 使用 IMAGES 中的程序化精灵或 AI 图像
       const sprite = IMAGES[id];
       if (sprite instanceof HTMLCanvasElement) {
         img.src = sprite.toDataURL();
       } else if (sprite instanceof HTMLImageElement) {
         img.src = sprite.src;
       } else {
-        // fallback: 用 emoji 绘制占位图标
         const emoji = TOWER_EMOJI[id] || '❓';
         const fc = document.createElement('canvas'); fc.width = 64; fc.height = 64;
         const fcx = fc.getContext('2d');
@@ -967,6 +1376,12 @@ window.Game = (function() {
       cost.className = 'card-cost';
       cost.textContent = '🪙 ' + cfg.cost;
       card.appendChild(cost);
+      // 快捷键标签
+      const key = document.createElement('div');
+      key.className = 'card-key';
+      key.style.cssText = 'position:absolute;top:4px;right:4px;background:#d35400;color:white;font-size:10px;padding:1px 5px;border-radius:4px;font-weight:bold;';
+      key.textContent = (idx + 1);
+      card.appendChild(key);
       card.addEventListener('click', () => {
         if (state.gold < cfg.cost) return;
         state.selectedTowerType = state.selectedTowerType === id ? null : id;
@@ -983,6 +1398,12 @@ window.Game = (function() {
     document.getElementById('lives').textContent = state.lives;
     document.getElementById('gold').textContent = state.gold;
     document.getElementById('waveNum').textContent = state.wave;
+    document.getElementById('killCount').textContent = state.totalKilled;
+    // 波进度条
+    const totalWaves = state.level.waves.length;
+    const pct = Math.min(100, (state.wave / totalWaves) * 100);
+    const wb = document.getElementById('waveProgress');
+    if (wb) wb.style.width = pct + '%';
     const btn = document.getElementById('nextWave');
     if (state.waveInProgress && state.waveInProgress !== 'spawning_done') {
       btn.disabled = true;
@@ -995,23 +1416,39 @@ window.Game = (function() {
       btn.textContent = '🏆 已通关';
     } else {
       btn.disabled = false;
-      btn.textContent = '▶ 开始第 ' + (state.wave + 1) + ' 波';
+      btn.textContent = '▶ 第' + (state.wave + 1) + '波';
     }
     document.querySelectorAll('.card').forEach(card => {
       const cost = GD.TOWERS[card.dataset.tower].cost;
       card.classList.toggle('disabled', state.gold < cost);
       card.classList.toggle('selected', state.selectedTowerType === card.dataset.tower);
     });
+    // 自动开始按钮
+    const autoBtn = document.getElementById('autoStart');
+    if (autoBtn) {
+      autoBtn.textContent = state.autoStart ? '🔄 自动:开' : '🔄 自动:关';
+      autoBtn.style.background = state.autoStart ? 'linear-gradient(180deg, #00b894, #00a381)' : 'linear-gradient(180deg, #b2bec3, #636e72)';
+    }
+    // 英雄等级
+    const heroHud = document.getElementById('heroHud');
+    const heroLvl = document.getElementById('heroLevel');
+    if (heroHud && heroLvl && state.hero) {
+      heroHud.style.display = '';
+      heroLvl.textContent = 'Lv' + state.heroLevel;
+    }
   }
 
   function showLevelSelect() {
     state.scene = 'levelSelect';
     state.selectedTowerType = null;
     state.selectedPlacedTower = null;
+    state.beeDrones = [];
+    state.shieldBlocks = [];
     hideUpgradePanel();
     document.getElementById('hud').style.display = 'none';
     document.getElementById('shop').style.display = 'none';
     document.getElementById('waveBanner').style.display = 'none';
+    document.getElementById('wavePreview').style.display = 'none';
     const sel = document.getElementById('levelSelect');
     sel.style.display = 'flex';
     sel.innerHTML = '';
@@ -1021,27 +1458,33 @@ window.Game = (function() {
     sel.appendChild(title);
     const sub = document.createElement('div');
     sub.style.cssText = 'color:#b8541e;font-size:14px;margin-bottom:18px;';
-    sub.textContent = '★ = 通关 | ★★ = 不丢血 | ★★★ = 限时 + 通关 | 每关三星解锁永久天赋';
+    sub.textContent = '★ = 通关 | ★★ = 不丢血 | ★★★ = 限时通关 | 每关三星解锁永久天赋';
     sel.appendChild(sub);
     const grid = document.createElement('div');
-    grid.style.cssText = 'display:grid;grid-template-columns:repeat(5,160px);gap:14px;';
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(4,160px);gap:14px;';
+    const themeEmojis = { grass: '🌱', desert: '🏜️', snow: '❄️', volcano: '🌋', sky: '☁️', jungle: '🌴', underwater: '🐠', candy: '🍬' };
     GD.LEVELS.forEach(lv => {
       const card = document.createElement('div');
       const unlocked = lv.id === 1 || (stars[lv.id - 1] && stars[lv.id - 1] > 0);
-      card.style.cssText = 'width:160px;height:200px;background:linear-gradient(180deg,#fff,#fff8e7);border-radius:16px;border:3px solid ' + (unlocked ? '#dfe6e9' : '#bbb') + ';padding:8px;cursor:' + (unlocked ? 'pointer' : 'not-allowed') + ';display:flex;flex-direction:column;align-items:center;justify-content:flex-start;box-shadow:0 4px 0 #c8d0d3,0 6px 12px rgba(0,0,0,0.08);';
+      card.style.cssText = 'width:160px;height:210px;background:linear-gradient(180deg,#fff,#fff8e7);border-radius:16px;border:3px solid ' + (unlocked ? '#dfe6e9' : '#bbb') + ';padding:8px;cursor:' + (unlocked ? 'pointer' : 'not-allowed') + ';display:flex;flex-direction:column;align-items:center;justify-content:flex-start;box-shadow:0 4px 0 #c8d0d3,0 6px 12px rgba(0,0,0,0.08);transition:transform 0.15s;';
       if (!unlocked) card.style.opacity = '0.5';
+      if (unlocked) {
+        card.addEventListener('mouseenter', () => { card.style.transform = 'translateY(-3px)'; card.style.boxShadow = '0 6px 0 #c8d0d3,0 8px 16px rgba(0,0,0,0.15)'; });
+        card.addEventListener('mouseleave', () => { card.style.transform = ''; card.style.boxShadow = '0 4px 0 #c8d0d3,0 6px 12px rgba(0,0,0,0.08)'; });
+      }
       const e = stars[lv.id] || 0;
-      const themeEmoji = lv.theme === 'grass' ? '🌱' : lv.theme === 'desert' ? '🏜️' : lv.theme === 'snow' ? '❄️' : lv.theme === 'volcano' ? '🌋' : '☁️';
+      const themeEmoji = themeEmojis[lv.theme] || '🌱';
       card.innerHTML = '<div style="font-size:50px;margin-top:6px;">' + themeEmoji + '</div>' +
         '<div style="font-weight:bold;color:#2d3436;font-size:15px;margin-top:4px;">' + lv.id + '. ' + lv.name + '</div>' +
         '<div style="color:#636e72;font-size:11px;margin-top:2px;">' + lv.waves.length + ' 波 · 🪙' + lv.startGold + ' · ❤' + lv.startLives + '</div>' +
-        '<div style="margin-top:auto;font-size:18px;color:#ffa502;letter-spacing:2px;">' + '⭐'.repeat(e) + '<span style="color:#ccc">' + '⭐'.repeat(3 - e) + '</span></div>';
+        '<div style="margin-top:6px;font-size:18px;color:#ffa502;letter-spacing:2px;">' + '⭐'.repeat(e) + '<span style="color:#ccc">' + '⭐'.repeat(3 - e) + '</span></div>';
       if (unlocked) {
         card.addEventListener('click', () => {
           sel.style.display = 'none';
           document.getElementById('hud').style.display = '';
           document.getElementById('shop').style.display = '';
           document.getElementById('waveBanner').style.display = '';
+          document.getElementById('wavePreview').style.display = '';
           setLevel(lv);
         });
       }
@@ -1049,10 +1492,15 @@ window.Game = (function() {
     });
     sel.appendChild(grid);
     const talentsBtn = document.createElement('button');
-    talentsBtn.textContent = '🌟 天赋 (' + Object.keys(talents).length + '/5)';
+    talentsBtn.textContent = '🌟 天赋 (' + Object.keys(talents).length + '/' + GD.TALENTS.length + ')';
     talentsBtn.style.cssText = 'margin-top:18px;padding:10px 24px;background:linear-gradient(180deg,#fdcb6e,#e17055);color:white;border:none;border-radius:22px;font-weight:bold;cursor:pointer;box-shadow:0 4px 0 #b85238;';
     talentsBtn.addEventListener('click', showTalents);
     sel.appendChild(talentsBtn);
+    const achBtn = document.createElement('button');
+    achBtn.textContent = '🏆 成就 (' + Object.keys(unlockedAchievements).length + '/' + GD.ACHIEVEMENTS.length + ')';
+    achBtn.style.cssText = 'margin-top:10px;padding:10px 24px;background:linear-gradient(180deg,#ffd700,#fdcb6e);color:#2d3436;border:none;border-radius:22px;font-weight:bold;cursor:pointer;box-shadow:0 4px 0 #c8960e;';
+    achBtn.addEventListener('click', showAchievements);
+    sel.appendChild(achBtn);
   }
 
   function showTalents() {
@@ -1069,7 +1517,7 @@ window.Game = (function() {
     sub.textContent = '每关 3 星解锁一项,永久影响所有关卡';
     sel.appendChild(sub);
     const grid = document.createElement('div');
-    grid.style.cssText = 'display:grid;grid-template-columns:repeat(5,140px);gap:14px;';
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(4,140px);gap:14px;';
     GD.TALENTS.forEach(t => {
       const unlocked = !!talents[t.id];
       const card = document.createElement('div');
@@ -1078,6 +1526,34 @@ window.Game = (function() {
         '<div style="font-weight:bold;font-size:14px;margin-top:4px;">' + t.name + '</div>' +
         '<div style="font-size:11px;color:#636e72;margin-top:4px;text-align:center;">' + t.desc + '</div>' +
         '<div style="margin-top:auto;font-size:11px;color:' + (unlocked ? '#d35400' : '#999') + ';">' + (unlocked ? '✓ 已解锁 (关' + t.unlockLevel + '三星)' : '关' + t.unlockLevel + '三星解锁') + '</div>';
+      grid.appendChild(card);
+    });
+    sel.appendChild(grid);
+    const back = document.createElement('button');
+    back.textContent = '← 返回关卡选择';
+    back.style.cssText = 'margin-top:18px;padding:10px 24px;background:#fff;color:#d35400;border:2px solid #d35400;border-radius:22px;font-weight:bold;cursor:pointer;';
+    back.addEventListener('click', showLevelSelect);
+    sel.appendChild(back);
+  }
+
+  function showAchievements() {
+    state.scene = 'talents';
+    const sel = document.getElementById('levelSelect');
+    sel.style.display = 'flex';
+    sel.innerHTML = '';
+    const title = document.createElement('h2');
+    title.textContent = '🏆 成就';
+    title.style.cssText = 'color:#d35400;font-size:30px;margin-bottom:14px;text-shadow:2px 2px 0 #fff;';
+    sel.appendChild(title);
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(5,130px);gap:10px;';
+    GD.ACHIEVEMENTS.forEach(a => {
+      const unlocked = !!unlockedAchievements[a.id];
+      const card = document.createElement('div');
+      card.style.cssText = 'width:130px;height:130px;background:linear-gradient(180deg,' + (unlocked ? '#fff5d6,#ffe5b4' : '#f0f0f0,#ddd') + ');border-radius:14px;border:3px solid ' + (unlocked ? '#ffd700' : '#bbb') + ';padding:8px;display:flex;flex-direction:column;align-items:center;text-align:center;';
+      card.innerHTML = '<div style="font-size:36px;">' + (unlocked ? a.icon : '🔒') + '</div>' +
+        '<div style="font-weight:bold;font-size:12px;margin-top:4px;">' + a.name + '</div>' +
+        '<div style="font-size:10px;color:#636e72;margin-top:3px;">' + a.desc + '</div>';
       grid.appendChild(card);
     });
     sel.appendChild(grid);
@@ -1117,12 +1593,16 @@ window.Game = (function() {
       done.textContent = '已满级 · T3';
       p.appendChild(done);
     }
+    // 出售（50%返还）
+    const totalCost = cfg.cost + (t.tier >= 2 ? cfg.upgrade.T2.cost : 0) + (t.tier >= 3 ? cfg.upgrade.T3.cost : 0);
+    const refund = Math.floor(totalCost * 0.5);
     const sell = document.createElement('button');
     sell.style.cssText = 'display:block;width:100%;margin-top:4px;padding:6px;background:#fff;color:#d35400;border:1px solid #d35400;border-radius:10px;cursor:pointer;';
-    sell.textContent = '出售 (+' + Math.floor(cfg.cost * 0.6) + '🪙)';
+    sell.textContent = '出售 (+' + refund + '🪙)';
     sell.addEventListener('click', () => {
-      state.gold += Math.floor(cfg.cost * 0.6);
+      state.gold += refund;
       state.towers = state.towers.filter(x => x !== t);
+      state.beeDrones = state.beeDrones.filter(b => b.parentTower !== t);
       hideUpgradePanel();
       state.selectedPlacedTower = null;
       updateHUD();
@@ -1183,6 +1663,17 @@ window.Game = (function() {
 
   function init() {
     document.getElementById('nextWave').addEventListener('click', startWave);
+    const autoBtn = document.getElementById('autoStart');
+    if (autoBtn) {
+      autoBtn.addEventListener('click', () => {
+        state.autoStart = !state.autoStart;
+        updateHUD();
+      });
+    }
+    const pauseBtn = document.getElementById('pauseBtn');
+    if (pauseBtn) {
+      pauseBtn.addEventListener('click', () => { state.paused = !state.paused; });
+    }
     canvas.addEventListener('mousemove', e => {
       if (state.scene !== 'playing') return;
       const rect = canvas.getBoundingClientRect();
@@ -1198,7 +1689,13 @@ window.Game = (function() {
       const x = (e.clientX - rect.left) * (W / rect.width);
       const y = (e.clientY - rect.top) * (H / rect.height);
       if (x > PLAY_W) {
-        if (y > H - 30) state.paused = !state.paused;
+        // 暂停按钮
+        if (y > H - 56 && y < H - 32) state.paused = !state.paused;
+        // 速度按钮
+        if (y > H - 28) {
+          if (x < PLAY_W + 60) state.speedMul = 1;
+          else state.speedMul = 2;
+        }
         return;
       }
       const col = Math.floor(x / TILE), row = Math.floor(y / TILE);
@@ -1232,7 +1729,31 @@ window.Game = (function() {
       else if (e.key === '2' || e.key.toLowerCase() === 'w') castSkill('s2');
       else if (e.key === '3' || e.key.toLowerCase() === 'e') castSkill('s3');
       else if (e.key === ' ') { e.preventDefault(); startWave(); }
-      else if (e.key === 'p') state.paused = !state.paused;
+      else if (e.key.toLowerCase() === 'p') { state.paused = !state.paused; }
+      else if (e.key.toLowerCase() === 'a') { state.autoStart = !state.autoStart; updateHUD(); }
+      else if (e.key === 's') { state.speedMul = state.speedMul === 1 ? 2 : 1; }
+      // 数字键选择塔
+      else if (e.key >= '1' && e.key <= '9') {
+        const idx = parseInt(e.key) - 1;
+        const allowed = state.level.allowedTowers;
+        if (idx < allowed.length) {
+          const id = allowed[idx];
+          const cfg = GD.TOWERS[id];
+          if (state.gold >= cfg.cost) {
+            state.selectedTowerType = state.selectedTowerType === id ? null : id;
+            state.selectedPlacedTower = null;
+            hideUpgradePanel();
+            updateHUD();
+          }
+        }
+      }
+      // ESC 取消选择
+      else if (e.key === 'Escape') {
+        state.selectedTowerType = null;
+        state.selectedPlacedTower = null;
+        hideUpgradePanel();
+        updateHUD();
+      }
     });
 
     preload().then(() => {
@@ -1250,8 +1771,6 @@ window.Game = (function() {
   }
 
   async function preload() {
-    // Strategy: show emoji sprites immediately, then lazy-load AI images in background
-    // When an AI image loads successfully and differs from default, it replaces the emoji sprite
     generateFallbackSprites();
     startLazyImageLoad();
 
@@ -1264,9 +1783,8 @@ window.Game = (function() {
     requestAnimationFrame(loop);
   }
 
-  // 检测 AI 图像是否是占位图（大面积白色/灰色/透明 + 低颜色方差）
   function isPlaceholderImage(img) {
-    const S = 64; // 采样尺寸
+    const S = 64;
     const c = document.createElement('canvas'); c.width = S; c.height = S;
     const cx = c.getContext('2d');
     cx.drawImage(img, 0, 0, S, S);
@@ -1280,24 +1798,20 @@ window.Game = (function() {
       rSum += r; gSum += g; bSum += b; n++;
       rVals.push(r); gVals.push(g); bVals.push(b);
     }
-    // 大面积透明 = 白色背景被移除的占位图
     if (transparent / totalPx > 0.5) return true;
-    if (n < 100) return true; // 几乎全透明
+    if (n < 100) return true;
     const rMean = rSum/n, gMean = gSum/n, bMean = bSum/n;
     const variance = (arr, mean) => arr.reduce((s, v) => s + (v - mean) ** 2, 0) / arr.length;
     const avgVar = (variance(rVals, rMean) + variance(gVals, gMean) + variance(bVals, bMean)) / 3;
-    // 占位图特征：颜色方差极低（均匀灰色）或几乎全白
     if (avgVar < 200) return true;
     const whiteRatio = rVals.filter((v, i) => v > 230 && gVals[i] > 230 && bVals[i] > 230).length / n;
     if (whiteRatio > 0.85) return true;
-    // 灰色均匀背景（占位图经过白色移除后的特征）
     const grayRatio = rVals.filter((v, i) => Math.abs(v - gVals[i]) < 20 && Math.abs(gVals[i] - bVals[i]) < 20 && v > 180 && v < 250).length / n;
     if (grayRatio > 0.7) return true;
     return false;
   }
 
   function startLazyImageLoad() {
-    // Build list of all image keys + URLs
     const tasks = [];
     GD.LEVELS.forEach(lv => {
       tasks.push(['bg_' + lv.id, bgUrl(lv.bgPrompt)]);
@@ -1311,10 +1825,9 @@ window.Game = (function() {
       tasks.push([id, imgUrl(cfg.prompt)]);
     });
 
-    // 并行加载所有图片，每批最多 3 个并发请求
     const BATCH_SIZE = 3;
-    const BATCH_DELAY = 1500; // 批次间延迟
-    const MAX_RETRIES = 2;   // 占位图重试次数
+    const BATCH_DELAY = 1500;
+    const MAX_RETRIES = 2;
     let batchIdx = 0;
 
     function loadOne(key, url, retries) {
@@ -1322,19 +1835,15 @@ window.Game = (function() {
         const img = new Image();
         img.onload = () => {
           if (isPlaceholderImage(img)) {
-            // 占位图，不替换 fallback，重试
             if (retries > 0) {
               setTimeout(() => loadOne(key, url, retries - 1).then(resolve), 3000);
             } else {
-              resolve(); // 放弃，保留 fallback
+              resolve();
             }
           } else {
-            // 有效 AI 图像，替换 fallback
             IMAGES[key] = img;
-            // 同步更新 state 中的引用
             if (key.startsWith('bg_') && state.bgImg !== img) state.bgImg = img;
             if (key === 'carrot' && state.carrotImg !== img) state.carrotImg = img;
-            // 更新商店卡片图标
             const cardImg = document.querySelector(`.card[data-tower="${key}"] .card-img`);
             if (cardImg) cardImg.src = img.src;
             resolve();
@@ -1344,7 +1853,7 @@ window.Game = (function() {
           if (retries > 0) {
             setTimeout(() => loadOne(key, url, retries - 1).then(resolve), 3000);
           } else {
-            resolve(); // 放弃，保留 fallback
+            resolve();
           }
         };
         img.src = url;
@@ -1354,7 +1863,6 @@ window.Game = (function() {
     function loadBatch() {
       const batch = tasks.slice(batchIdx, batchIdx + BATCH_SIZE);
       if (batch.length === 0) return;
-
       let pending = batch.length;
       batch.forEach(([key, url]) => {
         loadOne(key, url, MAX_RETRIES).then(() => {
@@ -1366,12 +1874,11 @@ window.Game = (function() {
         });
       });
     }
-    // Start after a short delay so game renders first
     setTimeout(loadBatch, 1000);
   }
 
   // ═══════════════════════════════════════════════════════════════════════════════
-  // 程序化精灵生成系统 v2.0 - 类别差异化绘制
+  // 程序化精灵生成系统 v2.0
   // ═══════════════════════════════════════════════════════════════════════════════
 
   const CAT_COLORS = {
@@ -1387,7 +1894,8 @@ window.Game = (function() {
     T08: '🦊', T09: '🐼', T10: '🦉', T11: '🐹', T12: '🦥', T13: '🌸', T14: '🍄',
     T15: '🌵', T16: '🌻', T17: '🎋', T18: '🧁', T19: '🍩', T20: '🍣', T21: '🍭',
     T22: '🧋', T23: '💎', T24: '🧙', T25: '👻', T26: '🐉', T27: '🦅', T28: '🤖',
-    T29: '🛰️', T30: '🚁'
+    T29: '🛰️', T30: '🚁',
+    T31: '🪃', T32: '🔫', T33: '🐍', T34: '💨', T35: '🛡️', T36: '🪙', T37: '🐝', T38: '🔊'
   };
 
   const MONSTER_EMOJI = {
@@ -1397,17 +1905,15 @@ window.Game = (function() {
     beast_05: '🦔', insect_02: '🐝', food_01: '🍣', mechanical_01: '🤖', aquatic_01: '🪼',
     beast_06: '🐲', undead_03: '🧛', elemental_02: '⛈️', plant_04: '🌻', mechanical_02: '⚙️',
     humanoid_02: '👹', beast_07: '🦖', slime_04: '🍔',
-    mini_slime: '💧', mini_spore: '🟤', mini_seed: '🫘', mini_scoop: '🍨'
+    mini_slime: '💧', mini_spore: '🟤', mini_seed: '🫘', mini_scoop: '🍨',
+    spider_01: '🕷️', jellyfish_01: '🪼', robot_01: '🤖', ninja_01: '🥷', wizard_01: '🧙',
+    turtle_01: '🐢', snowman_01: '☃️', candy_01: '🍬'
   };
 
-  // 类别特定的绘制函数
   const CATEGORY_DRAWERS = {
-    // 物理系：锐利边缘，武器装饰
     physical: (cx, S, color) => {
-      // 底部阴影
       cx.fillStyle = 'rgba(0,0,0,0.12)';
       cx.beginPath(); cx.ellipse(S/2, S*0.88, S*0.32, S*0.08, 0, 0, Math.PI*2); cx.fill();
-      // 六边形底座
       cx.fillStyle = color;
       cx.beginPath();
       for (let i = 0; i < 6; i++) {
@@ -1418,7 +1924,6 @@ window.Game = (function() {
         if (i === 0) cx.moveTo(x, y); else cx.lineTo(x, y);
       }
       cx.closePath(); cx.fill();
-      // 金属高光
       const grad = cx.createLinearGradient(S*0.3, S*0.3, S*0.7, S*0.7);
       grad.addColorStop(0, 'rgba(255,255,255,0.3)');
       grad.addColorStop(0.5, 'rgba(255,255,255,0)');
@@ -1433,7 +1938,6 @@ window.Game = (function() {
         if (i === 0) cx.moveTo(x, y); else cx.lineTo(x, y);
       }
       cx.closePath(); cx.fill();
-      // 边框
       cx.strokeStyle = 'rgba(0,0,0,0.25)'; cx.lineWidth = 2.5;
       cx.beginPath();
       for (let i = 0; i < 6; i++) {
@@ -1445,39 +1949,29 @@ window.Game = (function() {
       }
       cx.closePath(); cx.stroke();
     },
-
-    // 魔法系：流动曲线，符文装饰
     magical: (cx, S, color) => {
-      // 底部光晕
       const glow = cx.createRadialGradient(S/2, S*0.5, S*0.1, S/2, S*0.5, S*0.45);
       glow.addColorStop(0, color);
       glow.addColorStop(0.6, color);
       glow.addColorStop(1, 'rgba(0,0,0,0)');
       cx.fillStyle = glow; cx.beginPath(); cx.arc(S/2, S*0.5, S*0.45, 0, Math.PI*2); cx.fill();
-      // 流动曲线形状
       cx.fillStyle = color;
       cx.beginPath();
       cx.moveTo(S/2, S*0.15);
       cx.bezierCurveTo(S*0.85, S*0.25, S*0.85, S*0.7, S/2, S*0.82);
       cx.bezierCurveTo(S*0.15, S*0.7, S*0.15, S*0.25, S/2, S*0.15);
       cx.fill();
-      // 符文圆环
       cx.strokeStyle = 'rgba(255,255,255,0.5)'; cx.lineWidth = 2;
       cx.beginPath(); cx.arc(S/2, S*0.48, S*0.25, 0, Math.PI*2); cx.stroke();
-      // 内部星星
       cx.fillStyle = 'rgba(255,255,255,0.7)';
       drawStar(cx, S/2, S*0.48, 5, S*0.08, S*0.04);
     },
-
-    // 元素系：动态形态，粒子效果
     elemental: (cx, S, color) => {
-      // 外层光晕
       const outerGlow = cx.createRadialGradient(S/2, S*0.5, S*0.15, S/2, S*0.5, S*0.5);
       outerGlow.addColorStop(0, lighten(color, 60));
       outerGlow.addColorStop(0.5, color);
       outerGlow.addColorStop(1, 'rgba(0,0,0,0)');
       cx.fillStyle = outerGlow; cx.beginPath(); cx.arc(S/2, S*0.5, S*0.5, 0, Math.PI*2); cx.fill();
-      // 火焰/水滴形态
       cx.fillStyle = color;
       cx.beginPath();
       cx.moveTo(S/2, S*0.12);
@@ -1490,55 +1984,39 @@ window.Game = (function() {
         if (i === 0) cx.moveTo(x, y); else cx.lineTo(x, y);
       }
       cx.closePath(); cx.fill();
-      // 内核
       const core = cx.createRadialGradient(S/2, S*0.45, S*0.02, S/2, S*0.45, S*0.15);
       core.addColorStop(0, '#fff');
       core.addColorStop(1, lighten(color, 40));
       cx.fillStyle = core; cx.beginPath(); cx.arc(S/2, S*0.45, S*0.15, 0, Math.PI*2); cx.fill();
     },
-
-    // 自然系：有机形态，叶子装饰
     nature: (cx, S, color) => {
-      // 底部阴影
       cx.fillStyle = 'rgba(0,0,0,0.1)';
       cx.beginPath(); cx.ellipse(S/2, S*0.85, S*0.30, S*0.07, 0, 0, Math.PI*2); cx.fill();
-      // 圆形主体
       const grad = cx.createRadialGradient(S*0.4, S*0.35, S*0.05, S/2, S*0.5, S*0.38);
       grad.addColorStop(0, lighten(color, 50));
       grad.addColorStop(1, color);
       cx.fillStyle = grad; cx.beginPath(); cx.arc(S/2, S*0.48, S*0.36, 0, Math.PI*2); cx.fill();
-      // 叶子装饰
       cx.fillStyle = darken(color, 20);
       for (let i = 0; i < 3; i++) {
         const a = i * Math.PI * 2 / 3 - Math.PI / 2;
         drawLeaf(cx, S/2 + Math.cos(a) * S*0.2, S*0.48 + Math.sin(a) * S*0.2, S*0.12, a);
       }
-      // 边框
       cx.strokeStyle = darken(color, 30); cx.lineWidth = 2;
       cx.beginPath(); cx.arc(S/2, S*0.48, S*0.36, 0, Math.PI*2); cx.stroke();
     },
-
-    // 支援系：柔和圆形，心形装饰
     support: (cx, S, color) => {
-      // 柔和光晕
       const glow = cx.createRadialGradient(S/2, S*0.5, S*0.1, S/2, S*0.5, S*0.45);
       glow.addColorStop(0, lighten(color, 40));
       glow.addColorStop(0.7, color);
       glow.addColorStop(1, 'rgba(0,0,0,0)');
       cx.fillStyle = glow; cx.beginPath(); cx.arc(S/2, S*0.5, S*0.45, 0, Math.PI*2); cx.fill();
-      // 圆形主体
       cx.fillStyle = color; cx.beginPath(); cx.arc(S/2, S*0.48, S*0.35, 0, Math.PI*2); cx.fill();
-      // 心形装饰
       cx.fillStyle = 'rgba(255,255,255,0.6)';
       drawHeart(cx, S/2, S*0.48, S*0.12);
-      // 闪光点
       cx.fillStyle = '#fff';
       cx.beginPath(); cx.arc(S*0.35, S*0.35, S*0.04, 0, Math.PI*2); cx.fill();
     },
-
-    // 暗黑系：幽灵形态，雾气效果
     dark: (cx, S, color) => {
-      // 外层雾气
       for (let i = 0; i < 5; i++) {
         const a = i * Math.PI * 2 / 5;
         const x = S/2 + Math.cos(a) * S*0.25;
@@ -1548,31 +2026,24 @@ window.Game = (function() {
         grad.addColorStop(1, 'rgba(0,0,0,0)');
         cx.fillStyle = grad; cx.beginPath(); cx.arc(x, y, S*0.2, 0, Math.PI*2); cx.fill();
       }
-      // 幽灵主体
       cx.fillStyle = color;
       cx.beginPath();
       cx.moveTo(S*0.3, S*0.75);
       cx.quadraticCurveTo(S*0.3, S*0.2, S/2, S*0.15);
       cx.quadraticCurveTo(S*0.7, S*0.2, S*0.7, S*0.75);
-      // 波浪底部
       for (let i = 0; i <= 4; i++) {
         const x = S*0.7 - i * S*0.1;
         const y = S*0.75 + (i % 2 === 0 ? 0 : S*0.08);
         cx.lineTo(x, y);
       }
       cx.closePath(); cx.fill();
-      // 发光眼睛
       cx.fillStyle = '#fff';
       cx.beginPath(); cx.arc(S*0.4, S*0.4, S*0.06, 0, Math.PI*2); cx.fill();
       cx.beginPath(); cx.arc(S*0.6, S*0.4, S*0.06, 0, Math.PI*2); cx.fill();
     },
-
-    // 科技系：几何形态，电路装饰
     tech: (cx, S, color) => {
-      // 底部阴影
       cx.fillStyle = 'rgba(0,0,0,0.15)';
       cx.beginPath(); cx.ellipse(S/2, S*0.88, S*0.28, S*0.06, 0, 0, Math.PI*2); cx.fill();
-      // 方形主体
       const grad = cx.createLinearGradient(S*0.25, S*0.25, S*0.75, S*0.75);
       grad.addColorStop(0, lighten(color, 30));
       grad.addColorStop(0.5, color);
@@ -1580,68 +2051,56 @@ window.Game = (function() {
       cx.fillStyle = grad;
       drawRoundRect(cx, S*0.22, S*0.18, S*0.56, S*0.6, S*0.08);
       cx.fill();
-      // 电路线条
       cx.strokeStyle = lighten(color, 50); cx.lineWidth = 1.5;
       cx.beginPath();
       cx.moveTo(S*0.3, S*0.35); cx.lineTo(S*0.45, S*0.35); cx.lineTo(S*0.45, S*0.5);
       cx.moveTo(S*0.7, S*0.35); cx.lineTo(S*0.55, S*0.35); cx.lineTo(S*0.55, S*0.5);
       cx.stroke();
-      // LED 指示灯
       cx.fillStyle = lighten(color, 60);
       cx.beginPath(); cx.arc(S*0.35, S*0.28, S*0.04, 0, Math.PI*2); cx.fill();
       cx.beginPath(); cx.arc(S*0.65, S*0.28, S*0.04, 0, Math.PI*2); cx.fill();
-      // 边框
       cx.strokeStyle = darken(color, 30); cx.lineWidth = 2;
       drawRoundRect(cx, S*0.22, S*0.18, S*0.56, S*0.6, S*0.08);
       cx.stroke();
     }
   };
 
-  // 怪物类别绘制（简化版，保持可爱风格）
   const MONSTER_DRAWERS = {
     slime: (cx, S, color) => {
-      // 果冻形态
       const grad = cx.createRadialGradient(S*0.4, S*0.35, S*0.05, S/2, S*0.5, S*0.4);
       grad.addColorStop(0, lighten(color, 60));
       grad.addColorStop(0.7, color);
       grad.addColorStop(1, darken(color, 15));
       cx.fillStyle = grad;
-      // 弹性椭圆
       cx.beginPath();
       cx.ellipse(S/2, S*0.52, S*0.38, S*0.32, 0, 0, Math.PI*2);
       cx.fill();
-      // 高光
       cx.fillStyle = 'rgba(255,255,255,0.5)';
       cx.beginPath(); cx.ellipse(S*0.38, S*0.4, S*0.12, S*0.08, -0.3, 0, Math.PI*2); cx.fill();
     },
     beast: (cx, S, color) => {
-      // 圆形身体
       const grad = cx.createRadialGradient(S*0.4, S*0.35, S*0.05, S/2, S*0.5, S*0.38);
       grad.addColorStop(0, lighten(color, 40));
       grad.addColorStop(1, color);
       cx.fillStyle = grad; cx.beginPath(); cx.arc(S/2, S*0.48, S*0.36, 0, Math.PI*2); cx.fill();
-      // 耳朵
       cx.fillStyle = color;
       cx.beginPath(); cx.ellipse(S*0.32, S*0.22, S*0.12, S*0.18, -0.2, 0, Math.PI*2); cx.fill();
       cx.beginPath(); cx.ellipse(S*0.68, S*0.22, S*0.12, S*0.18, 0.2, 0, Math.PI*2); cx.fill();
     },
     plant: (cx, S, color) => {
-      // 花盆/植物形态
       cx.fillStyle = darken(color, 30);
-      cx.beginPath(); // 梯形盆
+      cx.beginPath();
       cx.moveTo(S*0.35, S*0.75);
       cx.lineTo(S*0.65, S*0.75);
       cx.lineTo(S*0.58, S*0.55);
       cx.lineTo(S*0.42, S*0.55);
       cx.closePath(); cx.fill();
-      // 植物
       const grad = cx.createRadialGradient(S/2, S*0.35, S*0.05, S/2, S*0.4, S*0.3);
       grad.addColorStop(0, lighten(color, 50));
       grad.addColorStop(1, color);
       cx.fillStyle = grad; cx.beginPath(); cx.arc(S/2, S*0.38, S*0.3, 0, Math.PI*2); cx.fill();
     },
     undead: (cx, S, color) => {
-      // 幽灵形态
       cx.fillStyle = color;
       cx.beginPath();
       cx.moveTo(S*0.28, S*0.78);
@@ -1653,13 +2112,11 @@ window.Game = (function() {
       cx.quadraticCurveTo(S*0.72, S*0.2, S/2, S*0.15);
       cx.quadraticCurveTo(S*0.28, S*0.2, S*0.28, S*0.78);
       cx.fill();
-      // 眼睛
       cx.fillStyle = '#000';
       cx.beginPath(); cx.arc(S*0.4, S*0.4, S*0.05, 0, Math.PI*2); cx.fill();
       cx.beginPath(); cx.arc(S*0.6, S*0.4, S*0.05, 0, Math.PI*2); cx.fill();
     },
     elemental: (cx, S, color) => {
-      // 元素形态（火焰/水滴）
       const grad = cx.createRadialGradient(S/2, S*0.4, S*0.05, S/2, S*0.5, S*0.4);
       grad.addColorStop(0, '#fff');
       grad.addColorStop(0.3, lighten(color, 50));
@@ -1672,27 +2129,22 @@ window.Game = (function() {
       cx.fill();
     },
     insect: (cx, S, color) => {
-      // 甲虫形态
       const grad = cx.createRadialGradient(S*0.4, S*0.35, S*0.05, S/2, S*0.5, S*0.35);
       grad.addColorStop(0, lighten(color, 40));
       grad.addColorStop(1, color);
       cx.fillStyle = grad; cx.beginPath(); cx.ellipse(S/2, S*0.48, S*0.32, S*0.28, 0, 0, Math.PI*2); cx.fill();
-      // 分割线
       cx.strokeStyle = darken(color, 30); cx.lineWidth = 2;
       cx.beginPath(); cx.moveTo(S/2, S*0.22); cx.lineTo(S/2, S*0.72); cx.stroke();
     },
     humanoid: (cx, S, color) => {
-      // 人形
       const grad = cx.createRadialGradient(S*0.4, S*0.35, S*0.05, S/2, S*0.5, S*0.35);
       grad.addColorStop(0, lighten(color, 30));
       grad.addColorStop(1, color);
       cx.fillStyle = grad; cx.beginPath(); cx.arc(S/2, S*0.38, S*0.28, 0, Math.PI*2); cx.fill();
-      // 身体
       cx.fillStyle = darken(color, 10);
       cx.beginPath(); cx.ellipse(S/2, S*0.68, S*0.22, S*0.18, 0, 0, Math.PI*2); cx.fill();
     },
     mechanical: (cx, S, color) => {
-      // 机械形态
       const grad = cx.createLinearGradient(S*0.25, S*0.25, S*0.75, S*0.75);
       grad.addColorStop(0, lighten(color, 30));
       grad.addColorStop(0.5, color);
@@ -1700,26 +2152,22 @@ window.Game = (function() {
       cx.fillStyle = grad;
       drawRoundRect(cx, S*0.25, S*0.2, S*0.5, S*0.6, S*0.1);
       cx.fill();
-      // 铆钉
       cx.fillStyle = darken(color, 30);
       [[0.3, 0.28], [0.7, 0.28], [0.3, 0.72], [0.7, 0.72]].forEach(([rx, ry]) => {
         cx.beginPath(); cx.arc(S*rx, S*ry, S*0.04, 0, Math.PI*2); cx.fill();
       });
     },
     aquatic: (cx, S, color) => {
-      // 水生形态
       const grad = cx.createRadialGradient(S*0.4, S*0.35, S*0.05, S/2, S*0.5, S*0.38);
       grad.addColorStop(0, lighten(color, 50));
       grad.addColorStop(1, color);
       cx.fillStyle = grad; cx.beginPath(); cx.ellipse(S/2, S*0.5, S*0.2, S*0.35, 0, 0, Math.PI*2); cx.fill();
-      // 鳍
       cx.fillStyle = darken(color, 10);
       cx.beginPath(); cx.moveTo(S*0.5, S*0.2); cx.lineTo(S*0.65, S*0.35); cx.lineTo(S*0.5, S*0.35); cx.fill();
       cx.beginPath(); cx.moveTo(S*0.5, S*0.8); cx.lineTo(S*0.65, S*0.65); cx.lineTo(S*0.5, S*0.65); cx.fill();
     }
   };
 
-  // 辅助绘制函数
   function drawStar(cx, x, y, points, outerR, innerR) {
     cx.beginPath();
     for (let i = 0; i < points * 2; i++) {
@@ -1752,7 +2200,6 @@ window.Game = (function() {
     cx.fill();
   }
 
-  // 兼容性圆角矩形绘制
   function drawRoundRect(cx, x, y, w, h, r) {
     cx.beginPath();
     cx.moveTo(x + r, y);
@@ -1780,13 +2227,11 @@ window.Game = (function() {
   }
 
   function generateFallbackSprites() {
-    // 为每个塔防生成程序化精灵
     Object.entries(GD.TOWERS).forEach(([id, cfg]) => {
       const color = CAT_COLORS[cfg.category] || '#fab1a0';
       const drawer = CATEGORY_DRAWERS[cfg.category] || CATEGORY_DRAWERS.physical;
       IMAGES[id] = makeProceduralSprite(drawer, color, cfg.name, cfg.tier, id);
     });
-    // 为每个怪物生成程序化精灵
     Object.entries(GD.MONSTERS).forEach(([id, cfg]) => {
       const color = CAT_COLORS[cfg.cat] || CAT_COLORS[cfg.category] || '#fab1a0';
       const drawer = MONSTER_DRAWERS[cfg.cat] || MONSTER_DRAWERS.beast;
@@ -1794,10 +2239,8 @@ window.Game = (function() {
       const isBoss = cfg.boss;
       IMAGES[id] = makeProceduralSprite(drawer, color, cfg.name, tier, id, isBoss);
     });
-    // 萝卜 & 英雄
     IMAGES['carrot'] = makeProceduralSprite(CATEGORY_DRAWERS.support, '#e17055', '萝卜', 1, 'carrot');
     IMAGES['hero_capi'] = makeProceduralSprite(CATEGORY_DRAWERS.physical, '#fdcb6e', '卡皮', 3, 'hero');
-    // 背景
     GD.LEVELS.forEach((lv, i) => {
       IMAGES['bg_' + lv.id] = makeBg(lv, i);
     });
@@ -1807,28 +2250,17 @@ window.Game = (function() {
     const S = 128;
     const c = document.createElement('canvas'); c.width = S; c.height = S;
     const cx = c.getContext('2d');
-
-    // 调用类别特定的绘制函数
     drawer(cx, S, color);
-
-    // 添加可爱元素（眼睛、腮红）- 所有角色通用
     addKawaiiFace(cx, S, isBoss);
-
-    // 等级星星
     if (tier >= 2) {
       cx.fillStyle = '#ffd700'; cx.font = `${S*0.12}px sans-serif`; cx.textAlign = 'center';
       const stars = tier >= 3 ? '★★★' : '★★';
       cx.fillText(stars, S/2, S*0.12);
     }
-
-    // Boss 标记
     if (isBoss) {
       cx.fillStyle = '#d63031'; cx.font = `bold ${S*0.1}px sans-serif`;
       cx.fillText('BOSS', S/2, S*0.95);
     }
-
-    // 直接返回 canvas 元素，避免 Image 异步加载问题
-    // Canvas 可以直接传给 drawImage()
     return c;
   }
 
@@ -1836,20 +2268,15 @@ window.Game = (function() {
     const eyeSize = isBoss ? S*0.07 : S*0.055;
     const eyeY = S*0.42;
     const eyeSpacing = isBoss ? S*0.18 : S*0.14;
-
-    // 眼睛
     cx.fillStyle = '#2d3436';
     cx.beginPath(); cx.arc(S/2 - eyeSpacing, eyeY, eyeSize, 0, Math.PI*2); cx.fill();
     cx.beginPath(); cx.arc(S/2 + eyeSpacing, eyeY, eyeSize, 0, Math.PI*2); cx.fill();
-    // 眼睛高光
     cx.fillStyle = '#fff';
     cx.beginPath(); cx.arc(S/2 - eyeSpacing + eyeSize*0.3, eyeY - eyeSize*0.3, eyeSize*0.35, 0, Math.PI*2); cx.fill();
     cx.beginPath(); cx.arc(S/2 + eyeSpacing + eyeSize*0.3, eyeY - eyeSize*0.3, eyeSize*0.35, 0, Math.PI*2); cx.fill();
-    // 腮红
     cx.fillStyle = 'rgba(255,150,150,0.35)';
     cx.beginPath(); cx.ellipse(S*0.30, S*0.52, S*0.06, S*0.035, 0, 0, Math.PI*2); cx.fill();
     cx.beginPath(); cx.ellipse(S*0.70, S*0.52, S*0.06, S*0.035, 0, 0, Math.PI*2); cx.fill();
-    // 微笑
     cx.strokeStyle = '#2d3436'; cx.lineWidth = 1.5;
     cx.beginPath();
     cx.arc(S/2, S*0.52, S*0.06, 0.1*Math.PI, 0.9*Math.PI);
@@ -1861,13 +2288,15 @@ window.Game = (function() {
     const c = document.createElement('canvas'); c.width = W; c.height = H;
     const cx = c.getContext('2d');
 
-    // 主题配色方案
     const THEMES = {
       grass: { bg1: '#a8e6a3', bg2: '#7cb86b', path: '#c8956b', pathBorder: '#8b6914', decor: ['#ff9ff3', '#feca57', '#48dbfb'] },
       desert: { bg1: '#f5deb3', bg2: '#e0a857', path: '#d4a574', pathBorder: '#8b6914', decor: ['#ff9f43', '#feca57', '#ff6b6b'] },
       snow: { bg1: '#c8ddf0', bg2: '#a8c8d8', path: '#e8f0f8', pathBorder: '#6c8ebf', decor: ['#74b9ff', '#a29bfe', '#dfe6e9'] },
       volcano: { bg1: '#d4a0a0', bg2: '#a05050', path: '#8b4040', pathBorder: '#4a2020', decor: ['#ff7675', '#fdcb6e', '#e17055'] },
-      sky: { bg1: '#b8c8e8', bg2: '#98b8d8', path: '#d8e8f8', pathBorder: '#6c8ebf', decor: ['#a29bfe', '#74b9ff', '#fd79a8'] }
+      sky: { bg1: '#b8c8e8', bg2: '#98b8d8', path: '#d8e8f8', pathBorder: '#6c8ebf', decor: ['#a29bfe', '#74b9ff', '#fd79a8'] },
+      jungle: { bg1: '#2d5a27', bg2: '#1a3a18', path: '#5a3a20', pathBorder: '#3a2010', decor: ['#00b894', '#55a630', '#a7c957'] },
+      underwater: { bg1: '#1a5276', bg2: '#0d3b66', path: '#7fb3d8', pathBorder: '#4a8ab5', decor: ['#81ecec', '#74b9ff', '#a29bfe'] },
+      candy: { bg1: '#ff9ff3', bg2: '#f368e0', path: '#feca57', pathBorder: '#e1a81e', decor: ['#ff7675', '#fdcb6e', '#74b9ff'] }
     };
     const theme = THEMES[lv.theme] || THEMES.grass;
 
@@ -1895,12 +2324,10 @@ window.Game = (function() {
 
     // 第四层：路径
     if (lv && lv.path) {
-      // 路径阴影
       cx.fillStyle = 'rgba(0,0,0,0.15)';
       for (const [pc, pr] of lv.path) {
         cx.fillRect(pc * 32 + 2, pr * 32 + 2, 32, 32);
       }
-      // 路径主体
       const pathGrad = cx.createLinearGradient(0, 0, W, H);
       pathGrad.addColorStop(0, theme.path);
       pathGrad.addColorStop(1, darken(theme.path, 15));
@@ -1908,7 +2335,6 @@ window.Game = (function() {
       for (const [pc, pr] of lv.path) {
         cx.fillRect(pc * 32, pr * 32, 32, 32);
       }
-      // 路径边框
       cx.strokeStyle = theme.pathBorder; cx.lineWidth = 1;
       for (const [pc, pr] of lv.path) {
         cx.strokeRect(pc * 32 + 0.5, pr * 32 + 0.5, 31, 31);
@@ -1924,7 +2350,6 @@ window.Game = (function() {
       const color = theme.decor[i % theme.decor.length];
       const size = 8 + (i % 3) * 4;
       cx.fillStyle = color;
-      // 随机形状
       if (i % 3 === 0) {
         cx.beginPath(); cx.arc(x, y, size, 0, Math.PI*2); cx.fill();
       } else if (i % 3 === 1) {
@@ -1949,7 +2374,6 @@ window.Game = (function() {
       cx.setLineDash([]);
     }
 
-    // 直接返回 canvas 元素，避免 Image 异步加载问题
     return c;
   }
 

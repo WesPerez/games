@@ -6,7 +6,8 @@ class InputManager {
         this.mapping = {
             'ArrowLeft': 'left', 'ArrowRight': 'right', 'ArrowUp': 'up', 'ArrowDown': 'down',
             'KeyA': 'left', 'KeyD': 'right', 'KeyW': 'up', 'KeyS': 'down',
-            'Space': 'jump', 'KeyZ': 'jump', 'KeyX': 'fire', 'Enter': 'enter'
+            'Space': 'jump', 'KeyZ': 'jump', 'KeyX': 'fire', 'Enter': 'enter',
+            'KeyP': 'pause', 'Escape': 'pause'
         };
         window.addEventListener('keydown', e => {
             const action = this.mapping[e.code];

@@ -78,9 +78,11 @@ class AudioEngine {
     }
     _scheduleBGMNote() {
         if (!this.ctx || !this.bgmType) return;
-        const notes = this.bgmType === 'star'
-            ? this._getStarNotes()
-            : this._getOverworldNotes();
+        let notes;
+        if (this.bgmType === 'star') notes = this._getStarNotes();
+        else if (this.bgmType === 'underground') notes = this._getUndergroundNotes();
+        else if (this.bgmType === 'castle') notes = this._getCastleNotes();
+        else notes = this._getOverworldNotes();
         if (this.bgmNoteIndex >= notes.length) {
             this.bgmNoteIndex = 0;
         }
@@ -129,6 +131,44 @@ class AudioEngine {
             { freq: B3, dur: q }, { freq: R, dur: h }
         ];
     }
+    _getUndergroundNotes() {
+        const C3 = 130.81, D3 = 146.83, Eb3 = 155.56, F3 = 174.61;
+        const G3 = 196.00, Ab3 = 207.65, Bb3 = 233.08, C4 = 261.63;
+        const R = 0;
+        const e = 0.06, q = 0.12;
+        return [
+            { freq: C3, dur: e }, { freq: C4, dur: e }, { freq: R, dur: e },
+            { freq: C3, dur: e }, { freq: C4, dur: e }, { freq: R, dur: e },
+            { freq: C3, dur: e }, { freq: C4, dur: e }, { freq: R, dur: q },
+            { freq: G3, dur: e }, { freq: C4, dur: e }, { freq: R, dur: e },
+            { freq: G3, dur: e }, { freq: C4, dur: e }, { freq: R, dur: e },
+            { freq: G3, dur: e }, { freq: C4, dur: e }, { freq: R, dur: q },
+            { freq: Ab3, dur: e }, { freq: C4, dur: e }, { freq: R, dur: e },
+            { freq: Ab3, dur: e }, { freq: C4, dur: e }, { freq: R, dur: e },
+            { freq: Ab3, dur: e }, { freq: C4, dur: e }, { freq: R, dur: q },
+            { freq: Bb3, dur: e }, { freq: C4, dur: e }, { freq: R, dur: e },
+            { freq: Bb3, dur: e }, { freq: C4, dur: e }, { freq: R, dur: e },
+            { freq: Bb3, dur: e }, { freq: C4, dur: e }, { freq: R, dur: q },
+        ];
+    }
+    _getCastleNotes() {
+        const C3 = 130.81, D3 = 146.83, Eb3 = 155.56, E3 = 164.81;
+        const F3 = 174.61, G3 = 196.00, Gb3 = 185.00;
+        const R = 0;
+        const e = 0.08, q = 0.16;
+        return [
+            { freq: C3, dur: e }, { freq: Eb3, dur: e }, { freq: G3, dur: e },
+            { freq: C3, dur: e }, { freq: Eb3, dur: e }, { freq: G3, dur: e },
+            { freq: C3, dur: e }, { freq: Eb3, dur: e }, { freq: G3, dur: e },
+            { freq: R, dur: e },
+            { freq: D3, dur: e }, { freq: F3, dur: e }, { freq: Gb3, dur: e },
+            { freq: D3, dur: e }, { freq: F3, dur: e }, { freq: Gb3, dur: e },
+            { freq: D3, dur: e }, { freq: F3, dur: e }, { freq: Gb3, dur: e },
+            { freq: R, dur: e },
+            { freq: C3, dur: q }, { freq: G3, dur: q },
+            { freq: Eb3, dur: q }, { freq: C3, dur: q },
+        ];
+    }
     _getStarNotes() {
         const C5 = 523.25, D5 = 587.33, E5 = 659.25, F5 = 698.46;
         const G5 = 783.99, A5 = 880.00, B5 = 987.77, C6 = 1046.50;
@@ -140,15 +180,15 @@ class AudioEngine {
             { freq: G5, dur: e }, { freq: E5, dur: e }, { freq: C5, dur: e },
             { freq: G5, dur: q },
             { freq: F5, dur: e }, { freq: A5, dur: e }, { freq: C6, dur: e },
-            { freq: F6 || C6, dur: q },
+            { freq: C6, dur: q },
             { freq: C6, dur: e }, { freq: A5, dur: e }, { freq: F5, dur: e },
             { freq: C6, dur: q },
             { freq: D5, dur: e }, { freq: F5, dur: e }, { freq: A5, dur: e },
-            { freq: D6 || C6, dur: q },
+            { freq: C6, dur: q },
             { freq: A5, dur: e }, { freq: F5, dur: e }, { freq: D5, dur: e },
             { freq: A5, dur: q },
             { freq: E5, dur: e }, { freq: G5, dur: e }, { freq: B5, dur: e },
-            { freq: E6 || C6, dur: q },
+            { freq: C6, dur: q },
             { freq: B5, dur: e }, { freq: G5, dur: e }, { freq: E5, dur: e },
             { freq: B5, dur: q }
         ];
