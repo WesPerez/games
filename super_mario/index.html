@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Super Mario</title>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <script src="js/engine/input.js"></script>
+    <script src="js/engine/audio.js"></script>
+    <script src="js/engine/camera.js"></script>
+    <script src="js/engine/physics.js"></script>
+    <script src="js/engine/renderer.js"></script>
+    <script src="js/engine/sprites.js"></script>
+    <script src="js/engine/levelmanager.js"></script>
+    <script src="js/engine/savemanager.js"></script>
+    <script src="js/entities/block.js"></script>
+    <script src="js/entities/enemy.js"></script>
+    <script src="js/entities/item.js"></script>
+    <script src="js/entities/fireball.js"></script>
+    <script src="js/entities/scorepopup.js"></script>
+    <script src="js/entities/mario.js"></script>
+    <script src="js/game.js"></script>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const game = new Game(canvas);
+        game.start();
+        // FPS Monitor
+        let fc = 0, lastT = performance.now();
+        function fpsLoop() {
+            fc++;
+            const now = performance.now();
+            if (now - lastT >= 1000) {
+                console.log(`FPS: ${fc}, frameTime: ${((now - lastT)/fc).toFixed(2)}ms`);
+                document.title = `Super Mario - ${fc} FPS`;
+                fc = 0;
+                lastT = now;
+            }
+            requestAnimationFrame(fpsLoop);
+        }
+        requestAnimationFrame(fpsLoop);
+    </script>
+</body>
+</html>
