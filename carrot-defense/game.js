@@ -1,0 +1,1977 @@
+window.Game = (function() {
+  const COLS = 18, ROWS = 11, TILE = 32;
+  const PLAY_W = COLS * TILE, PLAY_H = ROWS * TILE;
+  const HUD_W = 120;
+  const W = PLAY_W + HUD_W, H = PLAY_H;
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  canvas.width = W; canvas.height = H;
+  const ORIGIN = (location.protocol === 'file:') ? 'http://localhost:8000' : location.origin;
+  const API = ORIGIN + '/api/image?prompt=';
+
+  const GD = window.GAME_DATA;
+  const ASSET_URLS = {};
+  const IMAGES = {};
+  let LOADED = 0, TOTAL = 0;
+
+  function imgUrl(prompt, size) { return API + encodeURIComponent(prompt) + '&image_size=' + (size || 'square_hd'); }
+  function bgUrl(prompt) { return API + encodeURIComponent(prompt) + '&image_size=landscape_4_3'; }
+
+  function loadImage(key, url) {
+    return new Promise(resolve => {
+      const img = new Image();
+      const done = (v) => { IMAGES[key] = v; LOADED++; if (window.Game && window.Game.updateProgress) window.Game.updateProgress(); resolve(); };
+      img.onload = () => done(img);
+      img.onerror = () => done(null);
+      img.src = url;
+      setTimeout(() => { if (!(key in IMAGES)) done(null); }, 60000);
+    });
+  }
+
+  const state = {
+    scene: 'menu',
+    level: null,
+    lives: 20,
+    gold: 150,
+    wave: 0,
+    totalKilled: 0,
+    startTime: 0,
+    paused: false,
+    speedMul: 1,
+    towers: [],
+    enemies: [],
+    projectiles: [],
+    particles: [],
+    damageNumbers: [],
+    coins: [],
+    hero: null,
+    heroCd: {},
+    selectedTowerType: null,
+    selectedPlacedTower: null,
+    hoverCell: null,
+    waveInProgress: false,
+    waveQueue: [],
+    waveStartTime: 0,
+    pathCellSet: new Set(),
+    waypoints: [],
+    airWaypoints: [],
+    towerImgKey: {},
+    carrotImg: null,
+    bgImg: null,
+    talentNotices: [],
+    startedAt: 0,
+  };
+
+  const talents = JSON.parse(localStorage.getItem('cd_talents') || '{}');
+  const stars = JSON.parse(localStorage.getItem('cd_stars') || '{}');
+  function saveStars() { localStorage.setItem('cd_stars', JSON.stringify(stars)); }
+  function saveTalents() { localStorage.setItem('cd_talents', JSON.stringify(talents)); }
+
+  function applyTalents(s) {
+    s.startGold = 150;
+    s.globalFireRateMul = 1;
+    s.outOfGridHpBonus = 0;
+    s.goldBonusPerKill = 0;
+    s.heroCdMul = 1;
+    GD.TALENTS.forEach(t => { if (talents[t.id]) t.apply(s); });
+  }
+
+  function buildPath(path) {
+    const wp = [];
+    const minX = -TILE / 2, minY = -TILE / 2;
+    wp.push({ x: minX, y: path[0][1] * TILE + TILE / 2 });
+    path.forEach(([c, r]) => wp.push({ x: c * TILE + TILE / 2, y: r * TILE + TILE / 2 }));
+    wp.push({ x: PLAY_W + TILE / 2, y: wp[wp.length - 1].y });
+    return wp;
+  }
+
+  function buildAirPath(path) {
+    if (!path) return [];
+    const wp = [];
+    wp.push({ x: -TILE / 2, y: path[0][1] * TILE + TILE / 2 });
+    path.forEach(([c, r]) => wp.push({ x: c * TILE + TILE / 2, y: r * TILE + TILE / 2 }));
+    wp.push({ x: PLAY_W + TILE / 2, y: wp[wp.length - 1].y });
+    return wp;
+  }
+
+  function setLevel(lv) {
+    state.level = lv;
+    state.pathCellSet = new Set(lv.path.map(([c, r]) => c + ',' + r));
+    state.waypoints = buildPath(lv.path);
+    state.airWaypoints = buildAirPath(lv.airPath);
+    const init = { startGold: lv.startGold };
+    applyTalents(init);
+    state.lives = lv.startLives;
+    state.gold = init.startGold;
+    state.wave = 0;
+    state.totalKilled = 0;
+    state.startedAt = performance.now();
+    state.towers = [];
+    state.enemies = [];
+    state.projectiles = [];
+    state.particles = [];
+    state.damageNumbers = [];
+    state.coins = [];
+    state.selectedTowerType = null;
+    state.selectedPlacedTower = null;
+    state.hoverCell = null;
+    state.waveInProgress = false;
+    state.waveQueue = [];
+    state.hero = { x: 9 * TILE, y: 5 * TILE, hp: GD.HERO.baseHp, maxHp: GD.HERO.baseHp, atk: GD.HERO.baseAtk, lastS1: -99999, lastS2: -99999, lastS3: -99999, lastAtk: -99999, target: null };
+    state.heroCd = {};
+    GD.HERO.skills.forEach(s => state.heroCd[s.id] = 0);
+    state.bgImg = IMAGES['bg_' + lv.id];
+    state.carrotImg = IMAGES['carrot'];
+    state.talentNotices = [];
+    state.t = 0;
+    state.scene = 'playing';
+    buildShop();
+    buildSkillBar();
+    updateHUD();
+  }
+
+  function buildSkillBar() {
+    const bar = document.getElementById('skillBar');
+    if (!bar) return;
+    bar.innerHTML = '';
+    GD.HERO.skills.forEach(s => {
+      const btn = document.createElement('button');
+      btn.className = 'skill-btn ready';
+      btn.title = s.name + ' · ' + s.desc;
+      btn.innerHTML = '<span>' + s.icon + '</span><span class="key">' + s.key + '</span><div class="cd" style="display:none;"></div>';
+      btn.addEventListener('click', () => castSkill(s.id));
+      bar.appendChild(btn);
+    });
+  }
+
+  function canPlace(col, row) {
+    if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return false;
+    if (state.pathCellSet.has(col + ',' + row)) return false;
+    if (state.towers.some(t => t.col === col && t.row === row)) return false;
+    return true;
+  }
+
+  function placeTower(col, row, typeId) {
+    const cfg = GD.TOWERS[typeId];
+    if (!cfg || state.gold < cfg.cost || !canPlace(col, row)) return false;
+    state.gold -= cfg.cost;
+    const t = {
+      col, row,
+      x: col * TILE + TILE / 2,
+      y: row * TILE + TILE / 2,
+      typeId, tier: 1,
+      lastFire: 0,
+      angle: -Math.PI / 2,
+      recoil: 0,
+      bornAt: performance.now(),
+      maxHp: 50,
+      hp: 50,
+      outOfGrid: ['T09', 'T16', 'T24', 'T27'].includes(typeId),
+    };
+    if (t.outOfGrid) { t.hp += (GD.globalFireRateMul ? 0 : 0); t.hp += (state.outOfGridHpBonus || 0); t.maxHp = t.hp; }
+    state.towers.push(t);
+    state.particles.push({ x: t.x, y: t.y, vx: 0, vy: 0, life: 0.3, maxLife: 0.3, color: '#fff5d6', size: 60, kind: 'ring' });
+    return true;
+  }
+
+  function upgradeTower(t, toTier) {
+    const cfg = GD.TOWERS[t.typeId];
+    const upgrade = cfg.upgrade['T' + toTier];
+    if (!upgrade || state.gold < upgrade.cost) return false;
+    state.gold -= upgrade.cost;
+    t.tier = toTier;
+    state.particles.push({ x: t.x, y: t.y, vx: 0, vy: 0, life: 0.5, maxLife: 0.5, color: '#ffd700', size: 70, kind: 'ring' });
+    return true;
+  }
+
+  function spawnMonster(monId, atEnd) {
+    const cfg = GD.MONSTERS[monId];
+    if (!cfg) return;
+    const useAir = cfg.flying && state.airWaypoints.length;
+    const wp = useAir ? state.airWaypoints : state.waypoints;
+    const e = {
+      monId,
+      type: cfg,
+      cfg,
+      x: wp[0].x, y: wp[0].y,
+      hp: cfg.hp, maxHp: cfg.hp,
+      speed: cfg.speed,
+      baseSpeed: cfg.speed,
+      armor: cfg.armor || 0,
+      gold: cfg.gold,
+      size: 24,
+      flying: !!cfg.flying,
+      segment: 0,
+      slowUntil: 0,
+      hitFlash: 0,
+      walkPhase: Math.random() * Math.PI * 2,
+      dying: 0,
+      boss: !!cfg.boss,
+      mini: !!cfg.mini,
+      elapsed: 0,
+      ability: cfg.ability,
+      t: 0,
+    };
+    if (cfg.boss) e.size = 36;
+    state.enemies.push(e);
+  }
+
+  function applyDamage(e, dmg, slow, slowDur, burn, isCrit) {
+    if (e.dying > 0) return;
+    let actual = dmg;
+    if (e.armor) actual = Math.max(1, actual - e.armor);
+    e.hp -= actual;
+    e.hitFlash = 0.15;
+    if (slow) e.slowUntil = performance.now() + slowDur;
+    state.damageNumbers.push({ x: e.x, y: e.y - e.size - 4, value: Math.round(actual), life: 0.9, maxLife: 0.9, color: isCrit ? '#ffd700' : (slow ? '#74b9ff' : (burn ? '#ff7675' : '#fff')), crit: isCrit });
+    if (e.hp <= 0) {
+      const bonus = (state.goldBonusPerKill || 0);
+      state.gold += e.gold + bonus;
+      state.totalKilled++;
+      spawnDeathParticles(e.x, e.y, e.cfg);
+      if (e.cfg.split) {
+        for (let i = 0; i < e.cfg.split.count; i++) {
+          setTimeout(() => spawnMonster(e.cfg.split.id), i * 80);
+        }
+      }
+      e.dying = 0.4;
+    }
+  }
+
+  function spawnDeathParticles(x, y, cfg) {
+    const color = cfg.cat === 'slime' ? '#00b894' : cfg.cat === 'beast' ? '#6c5ce7' : cfg.cat === 'plant' ? '#55a630' : cfg.cat === 'undead' ? '#dfe6e9' : cfg.cat === 'elemental' ? '#ff7675' : '#fab1a0';
+    for (let i = 0; i < 10; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const s = 80 + Math.random() * 100;
+      state.particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 30, life: 0.7, maxLife: 0.7, color, size: 3 + Math.random() * 4, kind: 'star' });
+    }
+    for (let i = 0; i < 3; i++) {
+      state.coins.push({ x, y, vy: -180 - Math.random() * 60, life: 1.2, maxLife: 1.2, value: 5, color: '#ffd700' });
+    }
+  }
+
+  function findTarget(t) {
+    const cfg = getTowerCfg(t);
+    const r2 = cfg.range * cfg.range;
+    let best = null, bestP = -1;
+    for (const e of state.enemies) {
+      if (e.dying > 0) continue;
+      if (!canTowerHit(t, e)) continue;
+      const dx = e.x - t.x, dy = e.y - t.y;
+      if (dx * dx + dy * dy <= r2) {
+        const p = e.x + e.y * 0.01;
+        if (p > bestP) { bestP = p; best = e; }
+      }
+    }
+    return best;
+  }
+
+  function canTowerHit(t, e) {
+    if (e.flying) {
+      const atk = GD.TOWERS[t.typeId].category;
+      if (!['magical', 'elemental', 'dark', 'tech'].includes(atk) && t.typeId !== 'T01') return false;
+    }
+    return true;
+  }
+
+  function getTowerCfg(t) {
+    const base = GD.TOWERS[t.typeId];
+    if (t.tier === 1) return { ...base };
+    if (t.tier === 2) {
+      const dmgBoost = base.dmg * 1.4;
+      return { ...base, dmg: dmgBoost, range: base.range + 8, fireRate: base.fireRate * 1.1 };
+    }
+    return { ...base, dmg: base.dmg * 2.0, range: base.range + 16, fireRate: base.fireRate * 1.2 };
+  }
+
+  function fireProjectile(t, target) {
+    const cfg = getTowerCfg(t);
+    const angle = Math.atan2(target.y - t.y, target.x - t.x);
+    const muzzleX = t.x + Math.cos(angle) * 18;
+    const muzzleY = t.y + Math.sin(angle) * 18;
+    const color = cfg.category === 'magical' ? '#a29bfe' : cfg.category === 'elemental' ? '#74b9ff' : cfg.category === 'dark' ? '#6c5ce7' : '#fdcb6e';
+    const projSize = 6 + cfg.dmg * 0.04;
+    state.projectiles.push({
+      x: muzzleX, y: muzzleY,
+      vx: Math.cos(angle) * 320, vy: Math.sin(angle) * 320,
+      target,
+      damage: cfg.dmg,
+      color,
+      size: projSize,
+      kind: cfg.category,
+      towerId: t.typeId,
+      pierce: 0,
+      slow: cfg.special && cfg.special.includes('减速') ? 0.4 : (cfg.special && cfg.special.includes('黏液') ? 0.5 : 0),
+      slowDur: cfg.special && cfg.special.includes('3s') ? 3000 : 2000,
+    });
+    t.recoil = 1;
+    state.particles.push({ x: muzzleX, y: muzzleY, vx: 0, vy: 0, life: 0.15, maxLife: 0.15, color, size: 18, kind: 'muzzle' });
+  }
+
+  function flashScreen() {
+    canvas.classList.add('hit');
+    setTimeout(() => canvas.classList.remove('hit'), 200);
+  }
+
+  function endGame(won) {
+    state.scene = won ? 'won' : 'lost';
+    const timeSec = (performance.now() - state.startedAt) / 1000;
+    const lv = state.level;
+    let earned = 0;
+    if (won) {
+      earned = 1;
+      const noLeak = state.lives >= lv.stars.noLeak;
+      const inTime = timeSec <= lv.stars.speed;
+      if (noLeak) earned = 2;
+      if (noLeak && inTime) earned = 3;
+      const prev = stars[lv.id] || 0;
+      if (earned > prev) {
+        stars[lv.id] = earned;
+        saveStars();
+        if (earned === 3) {
+          const t = GD.TALENTS.find(t => t.unlockLevel === lv.id);
+          if (t && !talents[t.id]) {
+            talents[t.id] = true;
+            saveTalents();
+            state.talentNotices.push(t);
+          }
+        }
+      }
+    }
+    showResultModal(won, earned, timeSec);
+  }
+
+  function startWave() {
+    if (state.waveInProgress || state.scene !== 'playing') return;
+    if (state.wave >= state.level.waves.length) return;
+    state.wave++;
+    state.waveInProgress = true;
+    const wave = state.level.waves[state.wave - 1];
+    state.waveQueue = [];
+    wave.monsters.forEach(group => {
+      let acc = 0;
+      for (let i = 0; i < group.count; i++) {
+        state.waveQueue.push({ monId: group.id, delay: acc });
+        acc += group.interval;
+      }
+    });
+    state.waveStartTime = performance.now();
+    state.selectedTowerType = null;
+    showWaveBanner('🌊 第 ' + state.wave + ' / ' + state.level.waves.length + ' 波');
+    updateHUD();
+  }
+
+  function update(dt) {
+    if (state.scene !== 'playing' || state.paused) return;
+    const now = performance.now();
+    const eff = state.speedMul;
+    const eDt = dt * eff;
+    state.t = (state.t || 0) + eDt;
+    state.startedAt = state.startedAt;
+
+    if (state.waveInProgress === true && state.waveQueue.length) {
+      const next = state.waveQueue[0];
+      if (now - state.waveStartTime >= next.delay / eff) {
+        spawnMonster(next.monId);
+        state.waveQueue.shift();
+        if (state.waveQueue.length === 0) state.waveInProgress = 'spawning_done';
+      }
+    }
+
+    for (let i = state.enemies.length - 1; i >= 0; i--) {
+      const e = state.enemies[i];
+      e.t += eDt;
+      if (e.dying > 0) {
+        e.dying -= eDt;
+        if (e.dying <= 0) state.enemies.splice(i, 1);
+        continue;
+      }
+      const wp = (e.flying && state.airWaypoints.length) ? state.airWaypoints : state.waypoints;
+      if (e.segment >= wp.length - 1) {
+        state.lives -= e.boss ? 5 : 1;
+        state.enemies.splice(i, 1);
+        flashScreen();
+        updateHUD();
+        if (state.lives <= 0) { endGame(false); return; }
+        continue;
+      }
+      const target = wp[e.segment + 1];
+      const dx = target.x - e.x, dy = target.y - e.y;
+      const dist = Math.hypot(dx, dy);
+      const slowF = now < e.slowUntil ? 0.5 : 1.0;
+      const step = e.speed * slowF * eDt;
+      e.walkPhase += eDt * (slowF > 0.7 ? 8 : 4);
+      if (dist <= step) { e.x = target.x; e.y = target.y; e.segment++; }
+      else { e.x += (dx / dist) * step; e.y += (dy / dist) * step; }
+      if (e.hitFlash > 0) e.hitFlash -= eDt;
+      if (e.boss && e.t > 5) e.t = 0;
+    }
+
+    for (const t of state.towers) {
+      const cfg = getTowerCfg(t);
+      if (t.recoil > 0) t.recoil = Math.max(0, t.recoil - eDt * 5);
+      const target = findTarget(t);
+      if (target) {
+        t.angle = Math.atan2(target.y - t.y, target.x - t.x);
+        const fr = cfg.fireRate * (state.globalFireRateMul || 1);
+        if (now - t.lastFire >= 1000 / fr) {
+          fireProjectile(t, target);
+          t.lastFire = now;
+        }
+      }
+    }
+
+    for (let i = state.projectiles.length - 1; i >= 0; i--) {
+      const p = state.projectiles[i];
+      if (p.target && state.enemies.includes(p.target) && p.target.dying <= 0) {
+        const dx = p.target.x - p.x, dy = p.target.y - p.y;
+        const desired = Math.atan2(dy, dx);
+        const curr = Math.atan2(p.vy, p.vx);
+        let diff = desired - curr;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        const turn = Math.max(-0.4, Math.min(0.4, diff));
+        const newAng = curr + turn;
+        const speed = 320;
+        p.vx = Math.cos(newAng) * speed;
+        p.vy = Math.sin(newAng) * speed;
+      }
+      p.x += p.vx * eDt; p.y += p.vy * eDt;
+      p.trail = p.trail || [];
+      p.trail.push({ x: p.x, y: p.y, life: 0.18 });
+      if (p.trail.length > 8) p.trail.shift();
+      for (const tr of p.trail) tr.life -= eDt;
+      p.trail = p.trail.filter(tr => tr.life > 0);
+
+      let hit = false;
+      for (const e of state.enemies) {
+        if (e.dying > 0) continue;
+        const dx = e.x - p.x, dy = e.y - p.y;
+        if (dx * dx + dy * dy <= (e.size * 0.6) * (e.size * 0.6)) { hit = true; break; }
+      }
+      if (hit) {
+        const target = state.enemies.find(e => !e.dying && Math.hypot(e.x - p.x, e.y - p.y) < e.size);
+        if (target) applyDamage(target, p.damage, p.slow, p.slowDur, p.kind === 'elemental', p.kind === 'physical' && Math.random() < 0.15);
+        state.projectiles.splice(i, 1);
+      } else if (p.x < -50 || p.x > PLAY_W + 50 || p.y < -50 || p.y > PLAY_H + 50) {
+        state.projectiles.splice(i, 1);
+      }
+    }
+
+    for (let i = state.particles.length - 1; i >= 0; i--) {
+      const p = state.particles[i];
+      if (p.kind === 'muzzle' || p.kind === 'shockwave' || p.kind === 'ring') {
+        p.life -= eDt;
+      } else {
+        p.x += p.vx * eDt; p.y += p.vy * eDt;
+        p.vy += 220 * eDt;
+        p.vx *= 0.94; p.vy *= 0.94;
+        p.life -= eDt;
+      }
+      if (p.life <= 0) state.particles.splice(i, 1);
+    }
+    for (let i = state.coins.length - 1; i >= 0; i--) {
+      const c = state.coins[i];
+      c.y += c.vy * eDt;
+      c.vy += 400 * eDt;
+      c.life -= eDt;
+      if (c.life <= 0) state.coins.splice(i, 1);
+    }
+    for (let i = state.damageNumbers.length - 1; i >= 0; i--) {
+      const d = state.damageNumbers[i];
+      d.y -= 40 * eDt;
+      d.life -= eDt;
+      if (d.life <= 0) state.damageNumbers.splice(i, 1);
+    }
+
+    if (state.waveInProgress === 'spawning_done' && state.enemies.filter(e => e.dying <= 0).length === 0) {
+      state.waveInProgress = false;
+      if (state.wave >= state.level.waves.length) {
+        endGame(true);
+        return;
+      }
+      updateHUD();
+    }
+
+    if (state.hero) {
+      const h = state.hero;
+      const cdMul = state.heroCdMul || 1;
+      for (const s of GD.HERO.skills) {
+        const base = s.cd * 1000 * cdMul;
+        const ready = (now - h['last' + s.id.toUpperCase()]) >= base;
+        state.heroCd[s.id] = ready ? 0 : (1 - (now - h['last' + s.id.toUpperCase()]) / base);
+      }
+      let nearest = null, nd = 9999;
+      for (const e of state.enemies) {
+        if (e.dying > 0) continue;
+        const d = Math.hypot(e.x - h.x, e.y - h.y);
+        if (d < nd) { nd = d; nearest = e; }
+      }
+      h.target = nearest;
+      if (nearest && nd < 60) {
+        const ang = Math.atan2(nearest.y - h.y, nearest.x - h.x);
+        h.angle = ang;
+        if (now - h.lastAtk > 800) {
+          applyDamage(nearest, h.atk, 0, 0, false, false);
+          h.lastAtk = now;
+        }
+      }
+    }
+  }
+
+  function drawSprite(img, x, y, size, alpha, scale, rot, halo) {
+    if (halo) {
+      ctx.save();
+      const grad = ctx.createRadialGradient(x, y, size * 0.18, x, y, size * 0.58);
+      grad.addColorStop(0, halo);
+      grad.addColorStop(0.65, halo);
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.globalAlpha = 0.6;
+      ctx.beginPath();
+      ctx.arc(x, y, size * 0.58, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(0,0,0,0.22)';
+      ctx.beginPath();
+      ctx.ellipse(x, y + size * 0.42, size * 0.32, size * 0.1, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.save();
+    ctx.globalAlpha = alpha == null ? 1 : alpha;
+    ctx.translate(x, y);
+    ctx.rotate(rot || 0);
+    ctx.scale(scale || 1, scale || 1);
+    if (img) {
+      ctx.drawImage(img, -size / 2, -size / 2, size, size);
+      ctx.strokeStyle = 'rgba(80, 50, 30, 0.18)';
+      ctx.lineWidth = 1.2;
+      ctx.strokeRect(-size / 2 + 1, -size / 2 + 1, size - 2, size - 2);
+    } else {
+      ctx.fillStyle = '#fab1a0';
+      ctx.beginPath();
+      ctx.arc(0, 0, size / 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = `bold ${Math.floor(size * 0.4)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('?', 0, 0);
+    }
+    ctx.restore();
+  }
+
+  function render() {
+    const nowMs = performance.now();
+    ctx.clearRect(0, 0, W, H);
+
+    if (state.scene === 'menu' || state.scene === 'levelSelect' || state.scene === 'talents') {
+      renderBg();
+      renderCenterText();
+      return;
+    }
+    if (state.scene === 'won' || state.scene === 'lost') {
+      renderBg();
+      renderPlaying();
+      return;
+    }
+
+    renderPlaying();
+  }
+
+  function renderBg() {
+    if (IMAGES['bg_menu']) ctx.drawImage(IMAGES['bg_menu'], 0, 0, PLAY_W, PLAY_H);
+    else {
+      const grad = ctx.createLinearGradient(0, 0, 0, PLAY_H);
+      grad.addColorStop(0, '#ffe5b4');
+      grad.addColorStop(1, '#ffb3c6');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, PLAY_W, PLAY_H);
+    }
+    if (IMAGES.carrot) {
+      const breathe = 1 + Math.sin(now * 0.0025) * 0.05;
+      drawSprite(IMAGES.carrot, PLAY_W / 2, PLAY_H / 2, 200, 1, breathe, 0, '#fff5d6');
+    }
+  }
+  function now() { return performance.now(); }
+  function renderCenterText() {}
+  function renderPlaying() {
+    if (state.level) {
+        const lv = state.level;
+        if (state.bgImg) ctx.drawImage(state.bgImg, 0, 0, PLAY_W, PLAY_H);
+        else {
+        const grad = ctx.createLinearGradient(0, 0, 0, PLAY_H);
+        grad.addColorStop(0, lv.bgColor1);
+        grad.addColorStop(1, lv.bgColor2);
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, PLAY_W, PLAY_H);
+        for (let r = 0; r < ROWS; r++) {
+          for (let c = 0; c < COLS; c++) {
+            if ((c + r) % 2 === 0) {
+              ctx.fillStyle = 'rgba(255,255,255,0.06)';
+              ctx.fillRect(c * TILE, r * TILE, TILE, TILE);
+            }
+          }
+        }
+      }
+      for (const [c, r] of lv.path) {
+        const x = c * TILE, y = r * TILE;
+        const grad = ctx.createLinearGradient(x, y, x + TILE, y + TILE);
+        grad.addColorStop(0, '#c8956b');
+        grad.addColorStop(1, '#a67c52');
+        ctx.fillStyle = grad;
+        ctx.fillRect(x, y, TILE, TILE);
+      }
+      ctx.strokeStyle = 'rgba(101, 67, 33, 0.4)';
+      ctx.lineWidth = 2;
+      for (const [c, r] of lv.path) ctx.strokeRect(c * TILE + 1, r * TILE + 1, TILE - 2, TILE - 2);
+
+      if (lv.airPath) {
+        ctx.fillStyle = 'rgba(160, 200, 255, 0.18)';
+        for (const [c, r] of lv.airPath) ctx.fillRect(c * TILE, r * TILE, TILE, TILE);
+        ctx.strokeStyle = 'rgba(116, 185, 255, 0.4)';
+        ctx.setLineDash([4, 4]);
+        for (const [c, r] of lv.airPath) ctx.strokeRect(c * TILE + 1, r * TILE + 1, TILE - 2, TILE - 2);
+        ctx.setLineDash([]);
+      }
+
+      if (state.hoverCell && state.selectedTowerType) {
+        const { col, row } = state.hoverCell;
+        const cfg = GD.TOWERS[state.selectedTowerType];
+        const cx = col * TILE + TILE / 2, cy = row * TILE + TILE / 2;
+        if (canPlace(col, row)) {
+          ctx.fillStyle = 'rgba(108, 92, 231, 0.18)';
+          ctx.beginPath();
+          ctx.arc(cx, cy, cfg.range, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(108, 92, 231, 0.5)';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([6, 4]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle = 'rgba(108, 92, 231, 0.25)';
+          ctx.fillRect(col * TILE + 4, row * TILE + 4, TILE - 8, TILE - 8);
+        } else {
+          ctx.fillStyle = 'rgba(214, 48, 49, 0.3)';
+          ctx.fillRect(col * TILE, row * TILE, TILE, TILE);
+          ctx.strokeStyle = 'rgba(214, 48, 49, 0.7)';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(col * TILE + 10, row * TILE + 10);
+          ctx.lineTo(col * TILE + TILE - 10, row * TILE + TILE - 10);
+          ctx.moveTo(col * TILE + TILE - 10, row * TILE + 10);
+          ctx.lineTo(col * TILE + 10, row * TILE + TILE - 10);
+          ctx.stroke();
+        }
+      }
+
+      const last = lv.path[lv.path.length - 1];
+      const carrotBreathe = 1 + Math.sin(now() * 0.0025) * 0.05;
+      drawSprite(state.carrotImg || IMAGES.carrot, last[0] * TILE + TILE / 2, last[1] * TILE + TILE / 2, TILE * 1.3, 1, carrotBreathe, 0, '#fff5d6');
+
+      for (const t of state.towers) {
+        const cfg = getTowerCfg(t);
+        const recoilOffset = Math.sin(t.recoil * Math.PI) * 6;
+        const drawX = t.x - Math.cos(t.angle) * recoilOffset;
+        const drawY = t.y - Math.sin(t.angle) * recoilOffset;
+        const towerBreathe = 1 + Math.sin(now() * 0.004 + t.col * 0.5 + t.row * 0.7) * 0.02;
+        const sz = TILE * (t.tier === 3 ? 1.1 : t.tier === 2 ? 1.05 : 1);
+        if (state.selectedPlacedTower === t) {
+          ctx.fillStyle = 'rgba(225, 112, 85, 0.2)';
+          ctx.beginPath();
+          ctx.arc(t.x, t.y, cfg.range + 4 + Math.sin(now() * 0.006) * 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        const img = IMAGES[t.typeId];
+        drawSprite(img, drawX, drawY, sz, 1, towerBreathe, t.angle - Math.PI / 2, '#c8f0d8');
+        if (t.tier > 1) {
+          ctx.fillStyle = '#ffd700';
+          ctx.beginPath();
+          ctx.arc(t.x + 12, t.y - 12, 5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 10px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('T' + t.tier, t.x + 12, t.y - 12);
+        }
+      }
+
+      for (const e of state.enemies) {
+        if (e.dying > 0) {
+          const progress = 1 - e.dying / 0.4;
+          drawSprite(IMAGES[e.monId], e.x, e.y, e.size * 1.6, 1 - progress, 1 - progress * 0.7, e.dying * 3);
+          continue;
+        }
+        const bobY = Math.sin(e.walkPhase) * 3;
+        const flash = e.hitFlash > 0;
+        drawSprite(IMAGES[e.monId], e.x, e.y + bobY, e.size * 1.6, 1, 1, Math.sin(e.walkPhase) * 0.1, '#ffe5b4');
+        if (flash) {
+          ctx.fillStyle = 'rgba(255,255,255,0.7)';
+          ctx.beginPath();
+          ctx.arc(e.x, e.y + bobY, e.size * 0.8, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        const hpW = e.size * 1.4, hpH = 4;
+        const hpX = e.x - hpW / 2, hpY = e.y + bobY - e.size - 10;
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(hpX - 1, hpY - 1, hpW + 2, hpH + 2);
+        const hpPct = Math.max(0, e.hp / e.maxHp);
+        const hpColor = hpPct > 0.6 ? '#00b894' : (hpPct > 0.3 ? '#fdcb6e' : '#d63031');
+        ctx.fillStyle = hpColor;
+        ctx.fillRect(hpX, hpY, hpW * hpPct, hpH);
+        if (performance.now() < e.slowUntil) {
+          ctx.fillStyle = 'rgba(116, 185, 255, 0.4)';
+          ctx.beginPath();
+          ctx.arc(e.x, e.y + bobY, e.size * 1.1, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        if (e.flying) {
+          ctx.fillStyle = 'rgba(255,255,255,0.6)';
+          ctx.font = '10px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('✈', e.x, e.y + bobY - e.size - 14);
+        }
+      }
+
+      for (const p of state.projectiles) {
+        for (const t of (p.trail || [])) {
+          const a = (t.life / 0.18) * 0.5;
+          ctx.fillStyle = p.color;
+          ctx.globalAlpha = a;
+          ctx.beginPath();
+          ctx.arc(t.x, t.y, p.size * 0.6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+        ctx.save();
+        ctx.shadowColor = p.color;
+        ctx.shadowBlur = 12;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(p.x - p.size * 0.25, p.y - p.size * 0.25, p.size * 0.35, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      for (const p of state.particles) {
+        const t = p.life / p.maxLife;
+        ctx.globalAlpha = Math.max(0, t);
+        if (p.kind === 'shockwave') {
+          ctx.strokeStyle = p.color;
+          ctx.lineWidth = 4 * t;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size * (1 - t), 0, Math.PI * 2);
+          ctx.stroke();
+        } else if (p.kind === 'ring') {
+          ctx.strokeStyle = p.color;
+          ctx.lineWidth = 6;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size * (1 - t) * 0.8, 0, Math.PI * 2);
+          ctx.stroke();
+        } else if (p.kind === 'muzzle') {
+          ctx.fillStyle = p.color;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size * t, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (p.kind === 'star') {
+          ctx.fillStyle = p.color;
+          const s = p.size * (0.5 + t * 0.5);
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.vx * 0.05);
+          ctx.beginPath();
+          for (let i = 0; i < 5; i++) {
+            const a = (i / 5) * Math.PI * 2 - Math.PI / 2;
+            const a2 = a + Math.PI / 5;
+            ctx.lineTo(Math.cos(a) * s, Math.sin(a) * s);
+            ctx.lineTo(Math.cos(a2) * s * 0.4, Math.sin(a2) * s * 0.4);
+          }
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        } else {
+          ctx.fillStyle = p.color;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size * (0.5 + t * 0.5), 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.globalAlpha = 1;
+
+      for (const c of state.coins) {
+        const t = c.life / c.maxLife;
+        ctx.globalAlpha = t;
+        ctx.fillStyle = c.color;
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fff7d6';
+        ctx.beginPath();
+        ctx.arc(c.x - 2, c.y - 2, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+      for (const d of state.damageNumbers) {
+        const t = d.life / d.maxLife;
+        ctx.globalAlpha = t;
+        ctx.fillStyle = d.color;
+        ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+        ctx.lineWidth = 3;
+        ctx.font = `bold ${d.crit ? 18 : 14}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.strokeText(d.value, d.x, d.y);
+        ctx.fillText(d.value, d.x, d.y);
+      }
+      ctx.globalAlpha = 1;
+
+      if (state.hero) {
+        const h = state.hero;
+        const halo = 'rgba(255, 200, 100, 0.4)';
+        drawSprite(IMAGES['hero_capi'], h.x, h.y, TILE, 1, 1 + Math.sin(now() * 0.005) * 0.05, h.angle || 0, halo);
+        const hpW = 28, hpH = 4;
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(h.x - hpW / 2 - 1, h.y - TILE / 2 - 12 - 1, hpW + 2, hpH + 2);
+        ctx.fillStyle = '#ff7675';
+        ctx.fillRect(h.x - hpW / 2, h.y - TILE / 2 - 12, hpW * (h.hp / h.maxHp), hpH);
+      }
+    }
+
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.fillRect(PLAY_W, 0, HUD_W, H);
+    ctx.strokeStyle = '#5b8a3a';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(PLAY_W, 0); ctx.lineTo(PLAY_W, H);
+    ctx.stroke();
+    ctx.fillStyle = '#2d3436';
+    ctx.font = 'bold 14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('🥕 ' + state.lives, PLAY_W + HUD_W / 2, 26);
+    ctx.fillText('🪙 ' + state.gold, PLAY_W + HUD_W / 2, 52);
+    ctx.fillText('波 ' + state.wave + '/' + state.level.waves.length, PLAY_W + HUD_W / 2, 78);
+    if (state.hero) {
+      const h = state.hero;
+      ctx.font = '11px sans-serif';
+      ctx.fillStyle = '#5a3e36';
+      ctx.fillText('HP ' + h.hp + '/' + h.maxHp, PLAY_W + HUD_W / 2, 100);
+    }
+    const btnY = H - 30;
+    ctx.fillStyle = state.paused ? '#b2bec3' : '#fdcb6e';
+    ctx.fillRect(PLAY_W + 10, btnY, HUD_W - 20, 24);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(state.paused ? '▶ 继续' : '⏸ 暂停', PLAY_W + HUD_W / 2, btnY + 12);
+  }
+
+  function showWaveBanner(text) {
+    const banner = document.getElementById('waveBanner');
+    if (!banner) return;
+    banner.innerHTML = '<div class="wave-banner-text">' + text + '</div>';
+    const el = banner.querySelector('.wave-banner-text');
+    requestAnimationFrame(() => el.classList.add('show'));
+    setTimeout(() => { banner.innerHTML = ''; }, 2300);
+  }
+
+  function showResultModal(won, starsEarned, timeSec) {
+    const overlay = document.getElementById('overlay');
+    if (!overlay) return;
+    const title = document.getElementById('resultTitle');
+    const text = document.getElementById('resultText');
+    const stats = document.getElementById('resultStats');
+    if (won) {
+      title.textContent = '🎉 胜利！';
+      let s = '消灭了 ' + state.totalKilled + ' 怪,用时 ' + Math.floor(timeSec) + 's';
+      if (starsEarned > 0) s += '  ⭐'.repeat(starsEarned);
+      text.textContent = '你成功保护了萝卜！';
+      stats.textContent = s;
+    } else {
+      title.textContent = '💔 失败';
+      text.textContent = '萝卜被吃掉了…';
+      stats.textContent = `消灭了 ${state.totalKilled} 个怪物`;
+    }
+    const btn = overlay.querySelector('button');
+    if (btn) btn.onclick = () => { overlay.classList.add('hidden'); showLevelSelect(); };
+    overlay.classList.remove('hidden');
+  }
+
+  function updateSkillBar() {
+    const bar = document.getElementById('skillBar');
+    if (!bar || !state.hero) return;
+    const cdMul = state.heroCdMul || 1;
+    const now = performance.now();
+    const btns = bar.querySelectorAll('.skill-btn');
+    GD.HERO.skills.forEach((s, i) => {
+      const btn = btns[i];
+      if (!btn) return;
+      const last = state.hero['last' + s.id.toUpperCase()];
+      const total = s.cd * 1000 * cdMul;
+      const elapsed = now - last;
+      const cdDiv = btn.querySelector('.cd');
+      if (elapsed >= total) {
+        btn.classList.add('ready');
+        if (cdDiv) cdDiv.style.display = 'none';
+      } else {
+        btn.classList.remove('ready');
+        if (cdDiv) { cdDiv.style.display = 'flex'; cdDiv.textContent = Math.ceil((total - elapsed) / 1000); }
+      }
+    });
+  }
+
+  function buildShop() {
+    const shop = document.getElementById('shop');
+    if (!shop) return;
+    shop.innerHTML = '';
+    const allowed = state.level.allowedTowers;
+    allowed.forEach(id => {
+      const cfg = GD.TOWERS[id];
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.dataset.tower = id;
+      const img = document.createElement('img');
+      img.className = 'card-img';
+      img.alt = cfg.name;
+      // 使用 IMAGES 中的程序化精灵或 AI 图像
+      const sprite = IMAGES[id];
+      if (sprite instanceof HTMLCanvasElement) {
+        img.src = sprite.toDataURL();
+      } else if (sprite instanceof HTMLImageElement) {
+        img.src = sprite.src;
+      } else {
+        // fallback: 用 emoji 绘制占位图标
+        const emoji = TOWER_EMOJI[id] || '❓';
+        const fc = document.createElement('canvas'); fc.width = 64; fc.height = 64;
+        const fcx = fc.getContext('2d');
+        fcx.font = '48px sans-serif'; fcx.textAlign = 'center'; fcx.textBaseline = 'middle';
+        fcx.fillText(emoji, 32, 32);
+        img.src = fc.toDataURL();
+      }
+      card.appendChild(img);
+      const name = document.createElement('div');
+      name.className = 'card-name';
+      name.textContent = cfg.name;
+      card.appendChild(name);
+      const stats = document.createElement('div');
+      stats.className = 'card-stats';
+      stats.textContent = `⚔ ${cfg.dmg}  ⓵ ${cfg.range}  ⏱${cfg.fireRate.toFixed(1)}s`;
+      card.appendChild(stats);
+      const cost = document.createElement('div');
+      cost.className = 'card-cost';
+      cost.textContent = '🪙 ' + cfg.cost;
+      card.appendChild(cost);
+      card.addEventListener('click', () => {
+        if (state.gold < cfg.cost) return;
+        state.selectedTowerType = state.selectedTowerType === id ? null : id;
+        state.selectedPlacedTower = null;
+        hideUpgradePanel();
+        updateHUD();
+      });
+      shop.appendChild(card);
+    });
+  }
+
+  function updateHUD() {
+    if (!state.level) return;
+    document.getElementById('lives').textContent = state.lives;
+    document.getElementById('gold').textContent = state.gold;
+    document.getElementById('waveNum').textContent = state.wave;
+    const btn = document.getElementById('nextWave');
+    if (state.waveInProgress && state.waveInProgress !== 'spawning_done') {
+      btn.disabled = true;
+      btn.textContent = '🌀 战斗中…';
+    } else if (state.waveInProgress === 'spawning_done') {
+      btn.disabled = true;
+      btn.textContent = '🧹 清场中…';
+    } else if (state.wave >= state.level.waves.length) {
+      btn.disabled = true;
+      btn.textContent = '🏆 已通关';
+    } else {
+      btn.disabled = false;
+      btn.textContent = '▶ 开始第 ' + (state.wave + 1) + ' 波';
+    }
+    document.querySelectorAll('.card').forEach(card => {
+      const cost = GD.TOWERS[card.dataset.tower].cost;
+      card.classList.toggle('disabled', state.gold < cost);
+      card.classList.toggle('selected', state.selectedTowerType === card.dataset.tower);
+    });
+  }
+
+  function showLevelSelect() {
+    state.scene = 'levelSelect';
+    state.selectedTowerType = null;
+    state.selectedPlacedTower = null;
+    hideUpgradePanel();
+    document.getElementById('hud').style.display = 'none';
+    document.getElementById('shop').style.display = 'none';
+    document.getElementById('waveBanner').style.display = 'none';
+    const sel = document.getElementById('levelSelect');
+    sel.style.display = 'flex';
+    sel.innerHTML = '';
+    const title = document.createElement('h2');
+    title.textContent = '🥕 选择关卡 · Carrot Defense v3';
+    title.style.cssText = 'color:#d35400;font-size:30px;margin-bottom:14px;text-shadow:2px 2px 0 #fff;';
+    sel.appendChild(title);
+    const sub = document.createElement('div');
+    sub.style.cssText = 'color:#b8541e;font-size:14px;margin-bottom:18px;';
+    sub.textContent = '★ = 通关 | ★★ = 不丢血 | ★★★ = 限时 + 通关 | 每关三星解锁永久天赋';
+    sel.appendChild(sub);
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(5,160px);gap:14px;';
+    GD.LEVELS.forEach(lv => {
+      const card = document.createElement('div');
+      const unlocked = lv.id === 1 || (stars[lv.id - 1] && stars[lv.id - 1] > 0);
+      card.style.cssText = 'width:160px;height:200px;background:linear-gradient(180deg,#fff,#fff8e7);border-radius:16px;border:3px solid ' + (unlocked ? '#dfe6e9' : '#bbb') + ';padding:8px;cursor:' + (unlocked ? 'pointer' : 'not-allowed') + ';display:flex;flex-direction:column;align-items:center;justify-content:flex-start;box-shadow:0 4px 0 #c8d0d3,0 6px 12px rgba(0,0,0,0.08);';
+      if (!unlocked) card.style.opacity = '0.5';
+      const e = stars[lv.id] || 0;
+      const themeEmoji = lv.theme === 'grass' ? '🌱' : lv.theme === 'desert' ? '🏜️' : lv.theme === 'snow' ? '❄️' : lv.theme === 'volcano' ? '🌋' : '☁️';
+      card.innerHTML = '<div style="font-size:50px;margin-top:6px;">' + themeEmoji + '</div>' +
+        '<div style="font-weight:bold;color:#2d3436;font-size:15px;margin-top:4px;">' + lv.id + '. ' + lv.name + '</div>' +
+        '<div style="color:#636e72;font-size:11px;margin-top:2px;">' + lv.waves.length + ' 波 · 🪙' + lv.startGold + ' · ❤' + lv.startLives + '</div>' +
+        '<div style="margin-top:auto;font-size:18px;color:#ffa502;letter-spacing:2px;">' + '⭐'.repeat(e) + '<span style="color:#ccc">' + '⭐'.repeat(3 - e) + '</span></div>';
+      if (unlocked) {
+        card.addEventListener('click', () => {
+          sel.style.display = 'none';
+          document.getElementById('hud').style.display = '';
+          document.getElementById('shop').style.display = '';
+          document.getElementById('waveBanner').style.display = '';
+          setLevel(lv);
+        });
+      }
+      grid.appendChild(card);
+    });
+    sel.appendChild(grid);
+    const talentsBtn = document.createElement('button');
+    talentsBtn.textContent = '🌟 天赋 (' + Object.keys(talents).length + '/5)';
+    talentsBtn.style.cssText = 'margin-top:18px;padding:10px 24px;background:linear-gradient(180deg,#fdcb6e,#e17055);color:white;border:none;border-radius:22px;font-weight:bold;cursor:pointer;box-shadow:0 4px 0 #b85238;';
+    talentsBtn.addEventListener('click', showTalents);
+    sel.appendChild(talentsBtn);
+  }
+
+  function showTalents() {
+    state.scene = 'talents';
+    const sel = document.getElementById('levelSelect');
+    sel.style.display = 'flex';
+    sel.innerHTML = '';
+    const title = document.createElement('h2');
+    title.textContent = '🌟 永久天赋';
+    title.style.cssText = 'color:#d35400;font-size:30px;margin-bottom:14px;text-shadow:2px 2px 0 #fff;';
+    sel.appendChild(title);
+    const sub = document.createElement('div');
+    sub.style.cssText = 'color:#636e72;font-size:14px;margin-bottom:18px;';
+    sub.textContent = '每关 3 星解锁一项,永久影响所有关卡';
+    sel.appendChild(sub);
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(5,140px);gap:14px;';
+    GD.TALENTS.forEach(t => {
+      const unlocked = !!talents[t.id];
+      const card = document.createElement('div');
+      card.style.cssText = 'width:140px;height:160px;background:linear-gradient(180deg,' + (unlocked ? '#fff5d6,#ffe5b4' : '#f0f0f0,#ddd') + ');border-radius:14px;border:3px solid ' + (unlocked ? '#e17055' : '#bbb') + ';padding:8px;display:flex;flex-direction:column;align-items:center;';
+      card.innerHTML = '<div style="font-size:40px;">' + t.icon + '</div>' +
+        '<div style="font-weight:bold;font-size:14px;margin-top:4px;">' + t.name + '</div>' +
+        '<div style="font-size:11px;color:#636e72;margin-top:4px;text-align:center;">' + t.desc + '</div>' +
+        '<div style="margin-top:auto;font-size:11px;color:' + (unlocked ? '#d35400' : '#999') + ';">' + (unlocked ? '✓ 已解锁 (关' + t.unlockLevel + '三星)' : '关' + t.unlockLevel + '三星解锁') + '</div>';
+      grid.appendChild(card);
+    });
+    sel.appendChild(grid);
+    const back = document.createElement('button');
+    back.textContent = '← 返回关卡选择';
+    back.style.cssText = 'margin-top:18px;padding:10px 24px;background:#fff;color:#d35400;border:2px solid #d35400;border-radius:22px;font-weight:bold;cursor:pointer;';
+    back.addEventListener('click', showLevelSelect);
+    sel.appendChild(back);
+  }
+
+  function hideUpgradePanel() {
+    const p = document.getElementById('upgradePanel');
+    if (p) p.style.display = 'none';
+  }
+
+  function showUpgradePanel(t) {
+    const p = document.getElementById('upgradePanel');
+    if (!p) return;
+    p.innerHTML = '';
+    p.style.display = 'block';
+    const cfg = GD.TOWERS[t.typeId];
+    const title = document.createElement('div');
+    title.style.cssText = 'font-weight:bold;font-size:15px;color:#d35400;margin-bottom:6px;';
+    title.textContent = cfg.name + ' (T' + t.tier + ')';
+    p.appendChild(title);
+    if (t.tier < 3) {
+      const next = cfg.upgrade['T' + (t.tier + 1)];
+      const btn = document.createElement('button');
+      btn.style.cssText = 'display:block;width:100%;margin-top:4px;padding:6px;background:linear-gradient(180deg,#fdcb6e,#e17055);color:white;border:none;border-radius:10px;cursor:pointer;font-weight:bold;';
+      btn.textContent = '升 T' + (t.tier + 1) + ' · 🪙' + next.cost + ' · ' + next.desc;
+      if (state.gold < next.cost) { btn.disabled = true; btn.style.opacity = '0.5'; }
+      btn.addEventListener('click', () => { if (upgradeTower(t, t.tier + 1)) { hideUpgradePanel(); updateHUD(); } });
+      p.appendChild(btn);
+    } else {
+      const done = document.createElement('div');
+      done.style.cssText = 'color:#636e72;font-size:12px;margin-top:4px;';
+      done.textContent = '已满级 · T3';
+      p.appendChild(done);
+    }
+    const sell = document.createElement('button');
+    sell.style.cssText = 'display:block;width:100%;margin-top:4px;padding:6px;background:#fff;color:#d35400;border:1px solid #d35400;border-radius:10px;cursor:pointer;';
+    sell.textContent = '出售 (+' + Math.floor(cfg.cost * 0.6) + '🪙)';
+    sell.addEventListener('click', () => {
+      state.gold += Math.floor(cfg.cost * 0.6);
+      state.towers = state.towers.filter(x => x !== t);
+      hideUpgradePanel();
+      state.selectedPlacedTower = null;
+      updateHUD();
+    });
+    p.appendChild(sell);
+    const close = document.createElement('button');
+    close.style.cssText = 'display:block;width:100%;margin-top:4px;padding:4px;background:none;color:#636e72;border:none;cursor:pointer;font-size:12px;';
+    close.textContent = '关闭';
+    close.addEventListener('click', () => { state.selectedPlacedTower = null; hideUpgradePanel(); });
+    p.appendChild(close);
+  }
+
+  function castSkill(skillId) {
+    if (!state.hero) return;
+    const h = state.hero;
+    const now = performance.now();
+    const cdMul = state.heroCdMul || 1;
+    const sk = GD.HERO.skills.find(s => s.id === skillId);
+    if (!sk) return;
+    if (now - h['last' + sk.id.toUpperCase()] < sk.cd * 1000 * cdMul) return;
+    h['last' + sk.id.toUpperCase()] = now;
+    if (sk.id === 's1') {
+      const ang = h.angle || 0;
+      for (let i = 0; i < 10; i++) {
+        h.x += Math.cos(ang) * 20;
+        h.y += Math.sin(ang) * 20;
+      }
+      for (const e of state.enemies) {
+        if (e.dying > 0) continue;
+        if (Math.hypot(e.x - h.x, e.y - h.y) < 80) {
+          e.x += Math.cos(ang) * 80;
+          e.slowUntil = now + 1000;
+        }
+      }
+      state.particles.push({ x: h.x, y: h.y, vx: 0, vy: 0, life: 0.4, maxLife: 0.4, color: '#ffa502', size: 100, kind: 'shockwave' });
+    } else if (sk.id === 's2') {
+      h.hp = Math.min(h.maxHp, h.hp + 20);
+      for (const t of state.towers) {
+        if (Math.hypot(t.x - h.x, t.y - h.y) < 200) t.buffUntil = now + 5000;
+      }
+    } else if (sk.id === 's3') {
+      const ang = h.angle || 0;
+      for (const e of state.enemies) {
+        if (e.dying > 0) continue;
+        const d = Math.hypot(e.x - h.x, e.y - h.y);
+        if (d < 200) {
+          const a = Math.atan2(e.y - h.y, e.x - h.x);
+          if (Math.abs(a - ang) < Math.PI / 3 || Math.abs(a - ang + Math.PI * 2) < Math.PI / 3) {
+            applyDamage(e, 100, 0, 0, false, true);
+            e.x += Math.cos(a) * 50;
+            e.y += Math.sin(a) * 50;
+          }
+        }
+      }
+      state.particles.push({ x: h.x, y: h.y, vx: 0, vy: 0, life: 0.4, maxLife: 0.4, color: '#ff7675', size: 200, kind: 'shockwave' });
+    }
+  }
+
+  function init() {
+    document.getElementById('nextWave').addEventListener('click', startWave);
+    canvas.addEventListener('mousemove', e => {
+      if (state.scene !== 'playing') return;
+      const rect = canvas.getBoundingClientRect();
+      const x = (e.clientX - rect.left) * (W / rect.width);
+      const y = (e.clientY - rect.top) * (H / rect.height);
+      if (x > PLAY_W) { state.hoverCell = null; return; }
+      state.hoverCell = { col: Math.floor(x / TILE), row: Math.floor(y / TILE) };
+    });
+    canvas.addEventListener('mouseleave', () => { state.hoverCell = null; });
+    canvas.addEventListener('click', e => {
+      if (state.scene !== 'playing') return;
+      const rect = canvas.getBoundingClientRect();
+      const x = (e.clientX - rect.left) * (W / rect.width);
+      const y = (e.clientY - rect.top) * (H / rect.height);
+      if (x > PLAY_W) {
+        if (y > H - 30) state.paused = !state.paused;
+        return;
+      }
+      const col = Math.floor(x / TILE), row = Math.floor(y / TILE);
+      if (state.selectedTowerType) {
+        if (placeTower(col, row, state.selectedTowerType)) {
+          updateHUD();
+        }
+        return;
+      }
+      const clicked = state.towers.find(t => t.col === col && t.row === row);
+      if (clicked) {
+        state.selectedPlacedTower = clicked;
+        showUpgradePanel(clicked);
+      } else {
+        if (state.hero && state.level.heroAvailable) {
+          const h = state.hero;
+          if (Math.hypot(x - h.x, y - h.y) < TILE) {
+            h.dragging = true;
+            return;
+          }
+          h.x = x; h.y = y;
+        }
+        state.selectedPlacedTower = null;
+        hideUpgradePanel();
+      }
+    });
+
+    document.addEventListener('keydown', e => {
+      if (state.scene !== 'playing') return;
+      if (e.key === '1' || e.key.toLowerCase() === 'q') castSkill('s1');
+      else if (e.key === '2' || e.key.toLowerCase() === 'w') castSkill('s2');
+      else if (e.key === '3' || e.key.toLowerCase() === 'e') castSkill('s3');
+      else if (e.key === ' ') { e.preventDefault(); startWave(); }
+      else if (e.key === 'p') state.paused = !state.paused;
+    });
+
+    preload().then(() => {
+      showLevelSelect();
+    });
+  }
+
+  function updateProgress() {
+    const p = document.getElementById('progress');
+    if (p) p.textContent = LOADED + ' / ' + TOTAL;
+  }
+  function updateProgressBar(pct) {
+    const bar = document.getElementById('progressBar');
+    if (bar) bar.style.width = pct + '%';
+  }
+
+  async function preload() {
+    // Strategy: show emoji sprites immediately, then lazy-load AI images in background
+    // When an AI image loads successfully and differs from default, it replaces the emoji sprite
+    generateFallbackSprites();
+    startLazyImageLoad();
+
+    const loading = document.getElementById('loading');
+    if (loading) {
+      loading.classList.add('hidden');
+      setTimeout(() => { loading.style.display = 'none'; }, 400);
+    }
+    lastTime = performance.now();
+    requestAnimationFrame(loop);
+  }
+
+  // 检测 AI 图像是否是占位图（大面积白色/灰色/透明 + 低颜色方差）
+  function isPlaceholderImage(img) {
+    const S = 64; // 采样尺寸
+    const c = document.createElement('canvas'); c.width = S; c.height = S;
+    const cx = c.getContext('2d');
+    cx.drawImage(img, 0, 0, S, S);
+    const data = cx.getImageData(0, 0, S, S).data;
+    const totalPx = S * S;
+    let transparent = 0, rSum = 0, gSum = 0, bSum = 0, n = 0;
+    const rVals = [], gVals = [], bVals = [];
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
+      if (a < 128) { transparent++; continue; }
+      rSum += r; gSum += g; bSum += b; n++;
+      rVals.push(r); gVals.push(g); bVals.push(b);
+    }
+    // 大面积透明 = 白色背景被移除的占位图
+    if (transparent / totalPx > 0.5) return true;
+    if (n < 100) return true; // 几乎全透明
+    const rMean = rSum/n, gMean = gSum/n, bMean = bSum/n;
+    const variance = (arr, mean) => arr.reduce((s, v) => s + (v - mean) ** 2, 0) / arr.length;
+    const avgVar = (variance(rVals, rMean) + variance(gVals, gMean) + variance(bVals, bMean)) / 3;
+    // 占位图特征：颜色方差极低（均匀灰色）或几乎全白
+    if (avgVar < 200) return true;
+    const whiteRatio = rVals.filter((v, i) => v > 230 && gVals[i] > 230 && bVals[i] > 230).length / n;
+    if (whiteRatio > 0.85) return true;
+    // 灰色均匀背景（占位图经过白色移除后的特征）
+    const grayRatio = rVals.filter((v, i) => Math.abs(v - gVals[i]) < 20 && Math.abs(gVals[i] - bVals[i]) < 20 && v > 180 && v < 250).length / n;
+    if (grayRatio > 0.7) return true;
+    return false;
+  }
+
+  function startLazyImageLoad() {
+    // Build list of all image keys + URLs
+    const tasks = [];
+    GD.LEVELS.forEach(lv => {
+      tasks.push(['bg_' + lv.id, bgUrl(lv.bgPrompt)]);
+    });
+    tasks.push(['carrot', imgUrl(GD.CARROT_PROMPT)]);
+    tasks.push(['hero_capi', imgUrl(GD.HERO.prompt)]);
+    Object.entries(GD.TOWERS).forEach(([id, cfg]) => {
+      tasks.push([id, imgUrl(cfg.prompt)]);
+    });
+    Object.entries(GD.MONSTERS).forEach(([id, cfg]) => {
+      tasks.push([id, imgUrl(cfg.prompt)]);
+    });
+
+    // 并行加载所有图片，每批最多 3 个并发请求
+    const BATCH_SIZE = 3;
+    const BATCH_DELAY = 1500; // 批次间延迟
+    const MAX_RETRIES = 2;   // 占位图重试次数
+    let batchIdx = 0;
+
+    function loadOne(key, url, retries) {
+      return new Promise(resolve => {
+        const img = new Image();
+        img.onload = () => {
+          if (isPlaceholderImage(img)) {
+            // 占位图，不替换 fallback，重试
+            if (retries > 0) {
+              setTimeout(() => loadOne(key, url, retries - 1).then(resolve), 3000);
+            } else {
+              resolve(); // 放弃，保留 fallback
+            }
+          } else {
+            // 有效 AI 图像，替换 fallback
+            IMAGES[key] = img;
+            // 同步更新 state 中的引用
+            if (key.startsWith('bg_') && state.bgImg !== img) state.bgImg = img;
+            if (key === 'carrot' && state.carrotImg !== img) state.carrotImg = img;
+            // 更新商店卡片图标
+            const cardImg = document.querySelector(`.card[data-tower="${key}"] .card-img`);
+            if (cardImg) cardImg.src = img.src;
+            resolve();
+          }
+        };
+        img.onerror = () => {
+          if (retries > 0) {
+            setTimeout(() => loadOne(key, url, retries - 1).then(resolve), 3000);
+          } else {
+            resolve(); // 放弃，保留 fallback
+          }
+        };
+        img.src = url;
+      });
+    }
+
+    function loadBatch() {
+      const batch = tasks.slice(batchIdx, batchIdx + BATCH_SIZE);
+      if (batch.length === 0) return;
+
+      let pending = batch.length;
+      batch.forEach(([key, url]) => {
+        loadOne(key, url, MAX_RETRIES).then(() => {
+          pending--;
+          if (pending === 0) {
+            batchIdx += BATCH_SIZE;
+            setTimeout(loadBatch, BATCH_DELAY);
+          }
+        });
+      });
+    }
+    // Start after a short delay so game renders first
+    setTimeout(loadBatch, 1000);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // 程序化精灵生成系统 v2.0 - 类别差异化绘制
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  const CAT_COLORS = {
+    physical: '#e17055', magical: '#6c5ce7', nature: '#00b894', tech: '#0984e3',
+    support: '#fdcb6e', elemental: '#74b9ff', dark: '#636e72',
+    slime: '#00cec9', beast: '#e84393', undead: '#b2bec3', insect: '#55efc4',
+    elemental_m: '#ff7675', mechanical: '#a29bfe', humanoid: '#ffeaa7', plant: '#55a630',
+    aquatic: '#81ecec'
+  };
+
+  const TOWER_EMOJI = {
+    T01: '🏹', T02: '🔮', T03: '❄️', T04: '💣', T05: '🔥', T06: '⚡', T07: '🐱',
+    T08: '🦊', T09: '🐼', T10: '🦉', T11: '🐹', T12: '🦥', T13: '🌸', T14: '🍄',
+    T15: '🌵', T16: '🌻', T17: '🎋', T18: '🧁', T19: '🍩', T20: '🍣', T21: '🍭',
+    T22: '🧋', T23: '💎', T24: '🧙', T25: '👻', T26: '🐉', T27: '🦅', T28: '🤖',
+    T29: '🛰️', T30: '🚁'
+  };
+
+  const MONSTER_EMOJI = {
+    slime_01: '🟢', beast_01: '🦥', slime_02: '🍩', plant_01: '🍄', beast_02: '🐸',
+    undead_01: '👻', plant_02: '🍓', insect_01: '🐞', beast_03: '🦇', humanoid_01: '👺',
+    beast_04: '🐧', plant_03: '🪴', slime_03: '🍦', undead_02: '🧟', elemental_01: '🔥',
+    beast_05: '🦔', insect_02: '🐝', food_01: '🍣', mechanical_01: '🤖', aquatic_01: '🪼',
+    beast_06: '🐲', undead_03: '🧛', elemental_02: '⛈️', plant_04: '🌻', mechanical_02: '⚙️',
+    humanoid_02: '👹', beast_07: '🦖', slime_04: '🍔',
+    mini_slime: '💧', mini_spore: '🟤', mini_seed: '🫘', mini_scoop: '🍨'
+  };
+
+  // 类别特定的绘制函数
+  const CATEGORY_DRAWERS = {
+    // 物理系：锐利边缘，武器装饰
+    physical: (cx, S, color) => {
+      // 底部阴影
+      cx.fillStyle = 'rgba(0,0,0,0.12)';
+      cx.beginPath(); cx.ellipse(S/2, S*0.88, S*0.32, S*0.08, 0, 0, Math.PI*2); cx.fill();
+      // 六边形底座
+      cx.fillStyle = color;
+      cx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = i * Math.PI / 3 - Math.PI / 6;
+        const r = S * 0.36;
+        const x = S/2 + Math.cos(a) * r;
+        const y = S*0.48 + Math.sin(a) * r * 0.85;
+        if (i === 0) cx.moveTo(x, y); else cx.lineTo(x, y);
+      }
+      cx.closePath(); cx.fill();
+      // 金属高光
+      const grad = cx.createLinearGradient(S*0.3, S*0.3, S*0.7, S*0.7);
+      grad.addColorStop(0, 'rgba(255,255,255,0.3)');
+      grad.addColorStop(0.5, 'rgba(255,255,255,0)');
+      grad.addColorStop(1, 'rgba(0,0,0,0.15)');
+      cx.fillStyle = grad;
+      cx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = i * Math.PI / 3 - Math.PI / 6;
+        const r = S * 0.36;
+        const x = S/2 + Math.cos(a) * r;
+        const y = S*0.48 + Math.sin(a) * r * 0.85;
+        if (i === 0) cx.moveTo(x, y); else cx.lineTo(x, y);
+      }
+      cx.closePath(); cx.fill();
+      // 边框
+      cx.strokeStyle = 'rgba(0,0,0,0.25)'; cx.lineWidth = 2.5;
+      cx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = i * Math.PI / 3 - Math.PI / 6;
+        const r = S * 0.36;
+        const x = S/2 + Math.cos(a) * r;
+        const y = S*0.48 + Math.sin(a) * r * 0.85;
+        if (i === 0) cx.moveTo(x, y); else cx.lineTo(x, y);
+      }
+      cx.closePath(); cx.stroke();
+    },
+
+    // 魔法系：流动曲线，符文装饰
+    magical: (cx, S, color) => {
+      // 底部光晕
+      const glow = cx.createRadialGradient(S/2, S*0.5, S*0.1, S/2, S*0.5, S*0.45);
+      glow.addColorStop(0, color);
+      glow.addColorStop(0.6, color);
+      glow.addColorStop(1, 'rgba(0,0,0,0)');
+      cx.fillStyle = glow; cx.beginPath(); cx.arc(S/2, S*0.5, S*0.45, 0, Math.PI*2); cx.fill();
+      // 流动曲线形状
+      cx.fillStyle = color;
+      cx.beginPath();
+      cx.moveTo(S/2, S*0.15);
+      cx.bezierCurveTo(S*0.85, S*0.25, S*0.85, S*0.7, S/2, S*0.82);
+      cx.bezierCurveTo(S*0.15, S*0.7, S*0.15, S*0.25, S/2, S*0.15);
+      cx.fill();
+      // 符文圆环
+      cx.strokeStyle = 'rgba(255,255,255,0.5)'; cx.lineWidth = 2;
+      cx.beginPath(); cx.arc(S/2, S*0.48, S*0.25, 0, Math.PI*2); cx.stroke();
+      // 内部星星
+      cx.fillStyle = 'rgba(255,255,255,0.7)';
+      drawStar(cx, S/2, S*0.48, 5, S*0.08, S*0.04);
+    },
+
+    // 元素系：动态形态，粒子效果
+    elemental: (cx, S, color) => {
+      // 外层光晕
+      const outerGlow = cx.createRadialGradient(S/2, S*0.5, S*0.15, S/2, S*0.5, S*0.5);
+      outerGlow.addColorStop(0, lighten(color, 60));
+      outerGlow.addColorStop(0.5, color);
+      outerGlow.addColorStop(1, 'rgba(0,0,0,0)');
+      cx.fillStyle = outerGlow; cx.beginPath(); cx.arc(S/2, S*0.5, S*0.5, 0, Math.PI*2); cx.fill();
+      // 火焰/水滴形态
+      cx.fillStyle = color;
+      cx.beginPath();
+      cx.moveTo(S/2, S*0.12);
+      for (let i = 0; i <= 20; i++) {
+        const t = i / 20;
+        const angle = Math.PI * t;
+        const r = S * 0.35 * (1 + 0.3 * Math.sin(angle * 3));
+        const x = S/2 + Math.cos(angle + Math.PI/2) * r * 0.8;
+        const y = S*0.5 + Math.sin(angle + Math.PI/2) * r;
+        if (i === 0) cx.moveTo(x, y); else cx.lineTo(x, y);
+      }
+      cx.closePath(); cx.fill();
+      // 内核
+      const core = cx.createRadialGradient(S/2, S*0.45, S*0.02, S/2, S*0.45, S*0.15);
+      core.addColorStop(0, '#fff');
+      core.addColorStop(1, lighten(color, 40));
+      cx.fillStyle = core; cx.beginPath(); cx.arc(S/2, S*0.45, S*0.15, 0, Math.PI*2); cx.fill();
+    },
+
+    // 自然系：有机形态，叶子装饰
+    nature: (cx, S, color) => {
+      // 底部阴影
+      cx.fillStyle = 'rgba(0,0,0,0.1)';
+      cx.beginPath(); cx.ellipse(S/2, S*0.85, S*0.30, S*0.07, 0, 0, Math.PI*2); cx.fill();
+      // 圆形主体
+      const grad = cx.createRadialGradient(S*0.4, S*0.35, S*0.05, S/2, S*0.5, S*0.38);
+      grad.addColorStop(0, lighten(color, 50));
+      grad.addColorStop(1, color);
+      cx.fillStyle = grad; cx.beginPath(); cx.arc(S/2, S*0.48, S*0.36, 0, Math.PI*2); cx.fill();
+      // 叶子装饰
+      cx.fillStyle = darken(color, 20);
+      for (let i = 0; i < 3; i++) {
+        const a = i * Math.PI * 2 / 3 - Math.PI / 2;
+        drawLeaf(cx, S/2 + Math.cos(a) * S*0.2, S*0.48 + Math.sin(a) * S*0.2, S*0.12, a);
+      }
+      // 边框
+      cx.strokeStyle = darken(color, 30); cx.lineWidth = 2;
+      cx.beginPath(); cx.arc(S/2, S*0.48, S*0.36, 0, Math.PI*2); cx.stroke();
+    },
+
+    // 支援系：柔和圆形，心形装饰
+    support: (cx, S, color) => {
+      // 柔和光晕
+      const glow = cx.createRadialGradient(S/2, S*0.5, S*0.1, S/2, S*0.5, S*0.45);
+      glow.addColorStop(0, lighten(color, 40));
+      glow.addColorStop(0.7, color);
+      glow.addColorStop(1, 'rgba(0,0,0,0)');
+      cx.fillStyle = glow; cx.beginPath(); cx.arc(S/2, S*0.5, S*0.45, 0, Math.PI*2); cx.fill();
+      // 圆形主体
+      cx.fillStyle = color; cx.beginPath(); cx.arc(S/2, S*0.48, S*0.35, 0, Math.PI*2); cx.fill();
+      // 心形装饰
+      cx.fillStyle = 'rgba(255,255,255,0.6)';
+      drawHeart(cx, S/2, S*0.48, S*0.12);
+      // 闪光点
+      cx.fillStyle = '#fff';
+      cx.beginPath(); cx.arc(S*0.35, S*0.35, S*0.04, 0, Math.PI*2); cx.fill();
+    },
+
+    // 暗黑系：幽灵形态，雾气效果
+    dark: (cx, S, color) => {
+      // 外层雾气
+      for (let i = 0; i < 5; i++) {
+        const a = i * Math.PI * 2 / 5;
+        const x = S/2 + Math.cos(a) * S*0.25;
+        const y = S*0.5 + Math.sin(a) * S*0.2;
+        const grad = cx.createRadialGradient(x, y, S*0.05, x, y, S*0.2);
+        grad.addColorStop(0, color);
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        cx.fillStyle = grad; cx.beginPath(); cx.arc(x, y, S*0.2, 0, Math.PI*2); cx.fill();
+      }
+      // 幽灵主体
+      cx.fillStyle = color;
+      cx.beginPath();
+      cx.moveTo(S*0.3, S*0.75);
+      cx.quadraticCurveTo(S*0.3, S*0.2, S/2, S*0.15);
+      cx.quadraticCurveTo(S*0.7, S*0.2, S*0.7, S*0.75);
+      // 波浪底部
+      for (let i = 0; i <= 4; i++) {
+        const x = S*0.7 - i * S*0.1;
+        const y = S*0.75 + (i % 2 === 0 ? 0 : S*0.08);
+        cx.lineTo(x, y);
+      }
+      cx.closePath(); cx.fill();
+      // 发光眼睛
+      cx.fillStyle = '#fff';
+      cx.beginPath(); cx.arc(S*0.4, S*0.4, S*0.06, 0, Math.PI*2); cx.fill();
+      cx.beginPath(); cx.arc(S*0.6, S*0.4, S*0.06, 0, Math.PI*2); cx.fill();
+    },
+
+    // 科技系：几何形态，电路装饰
+    tech: (cx, S, color) => {
+      // 底部阴影
+      cx.fillStyle = 'rgba(0,0,0,0.15)';
+      cx.beginPath(); cx.ellipse(S/2, S*0.88, S*0.28, S*0.06, 0, 0, Math.PI*2); cx.fill();
+      // 方形主体
+      const grad = cx.createLinearGradient(S*0.25, S*0.25, S*0.75, S*0.75);
+      grad.addColorStop(0, lighten(color, 30));
+      grad.addColorStop(0.5, color);
+      grad.addColorStop(1, darken(color, 20));
+      cx.fillStyle = grad;
+      drawRoundRect(cx, S*0.22, S*0.18, S*0.56, S*0.6, S*0.08);
+      cx.fill();
+      // 电路线条
+      cx.strokeStyle = lighten(color, 50); cx.lineWidth = 1.5;
+      cx.beginPath();
+      cx.moveTo(S*0.3, S*0.35); cx.lineTo(S*0.45, S*0.35); cx.lineTo(S*0.45, S*0.5);
+      cx.moveTo(S*0.7, S*0.35); cx.lineTo(S*0.55, S*0.35); cx.lineTo(S*0.55, S*0.5);
+      cx.stroke();
+      // LED 指示灯
+      cx.fillStyle = lighten(color, 60);
+      cx.beginPath(); cx.arc(S*0.35, S*0.28, S*0.04, 0, Math.PI*2); cx.fill();
+      cx.beginPath(); cx.arc(S*0.65, S*0.28, S*0.04, 0, Math.PI*2); cx.fill();
+      // 边框
+      cx.strokeStyle = darken(color, 30); cx.lineWidth = 2;
+      drawRoundRect(cx, S*0.22, S*0.18, S*0.56, S*0.6, S*0.08);
+      cx.stroke();
+    }
+  };
+
+  // 怪物类别绘制（简化版，保持可爱风格）
+  const MONSTER_DRAWERS = {
+    slime: (cx, S, color) => {
+      // 果冻形态
+      const grad = cx.createRadialGradient(S*0.4, S*0.35, S*0.05, S/2, S*0.5, S*0.4);
+      grad.addColorStop(0, lighten(color, 60));
+      grad.addColorStop(0.7, color);
+      grad.addColorStop(1, darken(color, 15));
+      cx.fillStyle = grad;
+      // 弹性椭圆
+      cx.beginPath();
+      cx.ellipse(S/2, S*0.52, S*0.38, S*0.32, 0, 0, Math.PI*2);
+      cx.fill();
+      // 高光
+      cx.fillStyle = 'rgba(255,255,255,0.5)';
+      cx.beginPath(); cx.ellipse(S*0.38, S*0.4, S*0.12, S*0.08, -0.3, 0, Math.PI*2); cx.fill();
+    },
+    beast: (cx, S, color) => {
+      // 圆形身体
+      const grad = cx.createRadialGradient(S*0.4, S*0.35, S*0.05, S/2, S*0.5, S*0.38);
+      grad.addColorStop(0, lighten(color, 40));
+      grad.addColorStop(1, color);
+      cx.fillStyle = grad; cx.beginPath(); cx.arc(S/2, S*0.48, S*0.36, 0, Math.PI*2); cx.fill();
+      // 耳朵
+      cx.fillStyle = color;
+      cx.beginPath(); cx.ellipse(S*0.32, S*0.22, S*0.12, S*0.18, -0.2, 0, Math.PI*2); cx.fill();
+      cx.beginPath(); cx.ellipse(S*0.68, S*0.22, S*0.12, S*0.18, 0.2, 0, Math.PI*2); cx.fill();
+    },
+    plant: (cx, S, color) => {
+      // 花盆/植物形态
+      cx.fillStyle = darken(color, 30);
+      cx.beginPath(); // 梯形盆
+      cx.moveTo(S*0.35, S*0.75);
+      cx.lineTo(S*0.65, S*0.75);
+      cx.lineTo(S*0.58, S*0.55);
+      cx.lineTo(S*0.42, S*0.55);
+      cx.closePath(); cx.fill();
+      // 植物
+      const grad = cx.createRadialGradient(S/2, S*0.35, S*0.05, S/2, S*0.4, S*0.3);
+      grad.addColorStop(0, lighten(color, 50));
+      grad.addColorStop(1, color);
+      cx.fillStyle = grad; cx.beginPath(); cx.arc(S/2, S*0.38, S*0.3, 0, Math.PI*2); cx.fill();
+    },
+    undead: (cx, S, color) => {
+      // 幽灵形态
+      cx.fillStyle = color;
+      cx.beginPath();
+      cx.moveTo(S*0.28, S*0.78);
+      for (let i = 0; i <= 6; i++) {
+        const x = S*0.28 + i * S*0.44 / 6;
+        const y = S*0.78 + (i % 2 === 0 ? 0 : S*0.06);
+        cx.lineTo(x, y);
+      }
+      cx.quadraticCurveTo(S*0.72, S*0.2, S/2, S*0.15);
+      cx.quadraticCurveTo(S*0.28, S*0.2, S*0.28, S*0.78);
+      cx.fill();
+      // 眼睛
+      cx.fillStyle = '#000';
+      cx.beginPath(); cx.arc(S*0.4, S*0.4, S*0.05, 0, Math.PI*2); cx.fill();
+      cx.beginPath(); cx.arc(S*0.6, S*0.4, S*0.05, 0, Math.PI*2); cx.fill();
+    },
+    elemental: (cx, S, color) => {
+      // 元素形态（火焰/水滴）
+      const grad = cx.createRadialGradient(S/2, S*0.4, S*0.05, S/2, S*0.5, S*0.4);
+      grad.addColorStop(0, '#fff');
+      grad.addColorStop(0.3, lighten(color, 50));
+      grad.addColorStop(1, color);
+      cx.fillStyle = grad;
+      cx.beginPath();
+      cx.moveTo(S/2, S*0.12);
+      cx.bezierCurveTo(S*0.85, S*0.3, S*0.75, S*0.8, S/2, S*0.82);
+      cx.bezierCurveTo(S*0.25, S*0.8, S*0.15, S*0.3, S/2, S*0.12);
+      cx.fill();
+    },
+    insect: (cx, S, color) => {
+      // 甲虫形态
+      const grad = cx.createRadialGradient(S*0.4, S*0.35, S*0.05, S/2, S*0.5, S*0.35);
+      grad.addColorStop(0, lighten(color, 40));
+      grad.addColorStop(1, color);
+      cx.fillStyle = grad; cx.beginPath(); cx.ellipse(S/2, S*0.48, S*0.32, S*0.28, 0, 0, Math.PI*2); cx.fill();
+      // 分割线
+      cx.strokeStyle = darken(color, 30); cx.lineWidth = 2;
+      cx.beginPath(); cx.moveTo(S/2, S*0.22); cx.lineTo(S/2, S*0.72); cx.stroke();
+    },
+    humanoid: (cx, S, color) => {
+      // 人形
+      const grad = cx.createRadialGradient(S*0.4, S*0.35, S*0.05, S/2, S*0.5, S*0.35);
+      grad.addColorStop(0, lighten(color, 30));
+      grad.addColorStop(1, color);
+      cx.fillStyle = grad; cx.beginPath(); cx.arc(S/2, S*0.38, S*0.28, 0, Math.PI*2); cx.fill();
+      // 身体
+      cx.fillStyle = darken(color, 10);
+      cx.beginPath(); cx.ellipse(S/2, S*0.68, S*0.22, S*0.18, 0, 0, Math.PI*2); cx.fill();
+    },
+    mechanical: (cx, S, color) => {
+      // 机械形态
+      const grad = cx.createLinearGradient(S*0.25, S*0.25, S*0.75, S*0.75);
+      grad.addColorStop(0, lighten(color, 30));
+      grad.addColorStop(0.5, color);
+      grad.addColorStop(1, darken(color, 20));
+      cx.fillStyle = grad;
+      drawRoundRect(cx, S*0.25, S*0.2, S*0.5, S*0.6, S*0.1);
+      cx.fill();
+      // 铆钉
+      cx.fillStyle = darken(color, 30);
+      [[0.3, 0.28], [0.7, 0.28], [0.3, 0.72], [0.7, 0.72]].forEach(([rx, ry]) => {
+        cx.beginPath(); cx.arc(S*rx, S*ry, S*0.04, 0, Math.PI*2); cx.fill();
+      });
+    },
+    aquatic: (cx, S, color) => {
+      // 水生形态
+      const grad = cx.createRadialGradient(S*0.4, S*0.35, S*0.05, S/2, S*0.5, S*0.38);
+      grad.addColorStop(0, lighten(color, 50));
+      grad.addColorStop(1, color);
+      cx.fillStyle = grad; cx.beginPath(); cx.ellipse(S/2, S*0.5, S*0.2, S*0.35, 0, 0, Math.PI*2); cx.fill();
+      // 鳍
+      cx.fillStyle = darken(color, 10);
+      cx.beginPath(); cx.moveTo(S*0.5, S*0.2); cx.lineTo(S*0.65, S*0.35); cx.lineTo(S*0.5, S*0.35); cx.fill();
+      cx.beginPath(); cx.moveTo(S*0.5, S*0.8); cx.lineTo(S*0.65, S*0.65); cx.lineTo(S*0.5, S*0.65); cx.fill();
+    }
+  };
+
+  // 辅助绘制函数
+  function drawStar(cx, x, y, points, outerR, innerR) {
+    cx.beginPath();
+    for (let i = 0; i < points * 2; i++) {
+      const r = i % 2 === 0 ? outerR : innerR;
+      const a = (i * Math.PI) / points - Math.PI / 2;
+      const px = x + Math.cos(a) * r;
+      const py = y + Math.sin(a) * r;
+      if (i === 0) cx.moveTo(px, py); else cx.lineTo(px, py);
+    }
+    cx.closePath(); cx.fill();
+  }
+
+  function drawLeaf(cx, x, y, size, angle) {
+    cx.save();
+    cx.translate(x, y);
+    cx.rotate(angle);
+    cx.beginPath();
+    cx.moveTo(0, -size);
+    cx.bezierCurveTo(size*0.6, -size*0.5, size*0.6, size*0.5, 0, size);
+    cx.bezierCurveTo(-size*0.6, size*0.5, -size*0.6, -size*0.5, 0, -size);
+    cx.fill();
+    cx.restore();
+  }
+
+  function drawHeart(cx, x, y, size) {
+    cx.beginPath();
+    cx.moveTo(x, y + size * 0.3);
+    cx.bezierCurveTo(x - size, y - size * 0.5, x - size * 0.5, y - size, x, y - size * 0.5);
+    cx.bezierCurveTo(x + size * 0.5, y - size, x + size, y - size * 0.5, x, y + size * 0.3);
+    cx.fill();
+  }
+
+  // 兼容性圆角矩形绘制
+  function drawRoundRect(cx, x, y, w, h, r) {
+    cx.beginPath();
+    cx.moveTo(x + r, y);
+    cx.lineTo(x + w - r, y);
+    cx.quadraticCurveTo(x + w, y, x + w, y + r);
+    cx.lineTo(x + w, y + h - r);
+    cx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    cx.lineTo(x + r, y + h);
+    cx.quadraticCurveTo(x, y + h, x, y + h - r);
+    cx.lineTo(x, y + r);
+    cx.quadraticCurveTo(x, y, x + r, y);
+    cx.closePath();
+  }
+
+  function lighten(hex, amt) {
+    let r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+    r = Math.min(255, r + amt); g = Math.min(255, g + amt); b = Math.min(255, b + amt);
+    return `rgb(${r},${g},${b})`;
+  }
+
+  function darken(hex, amt) {
+    let r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+    r = Math.max(0, r - amt); g = Math.max(0, g - amt); b = Math.max(0, b - amt);
+    return `rgb(${r},${g},${b})`;
+  }
+
+  function generateFallbackSprites() {
+    // 为每个塔防生成程序化精灵
+    Object.entries(GD.TOWERS).forEach(([id, cfg]) => {
+      const color = CAT_COLORS[cfg.category] || '#fab1a0';
+      const drawer = CATEGORY_DRAWERS[cfg.category] || CATEGORY_DRAWERS.physical;
+      IMAGES[id] = makeProceduralSprite(drawer, color, cfg.name, cfg.tier, id);
+    });
+    // 为每个怪物生成程序化精灵
+    Object.entries(GD.MONSTERS).forEach(([id, cfg]) => {
+      const color = CAT_COLORS[cfg.cat] || CAT_COLORS[cfg.category] || '#fab1a0';
+      const drawer = MONSTER_DRAWERS[cfg.cat] || MONSTER_DRAWERS.beast;
+      const tier = cfg.tier || 1;
+      const isBoss = cfg.boss;
+      IMAGES[id] = makeProceduralSprite(drawer, color, cfg.name, tier, id, isBoss);
+    });
+    // 萝卜 & 英雄
+    IMAGES['carrot'] = makeProceduralSprite(CATEGORY_DRAWERS.support, '#e17055', '萝卜', 1, 'carrot');
+    IMAGES['hero_capi'] = makeProceduralSprite(CATEGORY_DRAWERS.physical, '#fdcb6e', '卡皮', 3, 'hero');
+    // 背景
+    GD.LEVELS.forEach((lv, i) => {
+      IMAGES['bg_' + lv.id] = makeBg(lv, i);
+    });
+  }
+
+  function makeProceduralSprite(drawer, color, label, tier, id, isBoss) {
+    const S = 128;
+    const c = document.createElement('canvas'); c.width = S; c.height = S;
+    const cx = c.getContext('2d');
+
+    // 调用类别特定的绘制函数
+    drawer(cx, S, color);
+
+    // 添加可爱元素（眼睛、腮红）- 所有角色通用
+    addKawaiiFace(cx, S, isBoss);
+
+    // 等级星星
+    if (tier >= 2) {
+      cx.fillStyle = '#ffd700'; cx.font = `${S*0.12}px sans-serif`; cx.textAlign = 'center';
+      const stars = tier >= 3 ? '★★★' : '★★';
+      cx.fillText(stars, S/2, S*0.12);
+    }
+
+    // Boss 标记
+    if (isBoss) {
+      cx.fillStyle = '#d63031'; cx.font = `bold ${S*0.1}px sans-serif`;
+      cx.fillText('BOSS', S/2, S*0.95);
+    }
+
+    // 直接返回 canvas 元素，避免 Image 异步加载问题
+    // Canvas 可以直接传给 drawImage()
+    return c;
+  }
+
+  function addKawaiiFace(cx, S, isBoss) {
+    const eyeSize = isBoss ? S*0.07 : S*0.055;
+    const eyeY = S*0.42;
+    const eyeSpacing = isBoss ? S*0.18 : S*0.14;
+
+    // 眼睛
+    cx.fillStyle = '#2d3436';
+    cx.beginPath(); cx.arc(S/2 - eyeSpacing, eyeY, eyeSize, 0, Math.PI*2); cx.fill();
+    cx.beginPath(); cx.arc(S/2 + eyeSpacing, eyeY, eyeSize, 0, Math.PI*2); cx.fill();
+    // 眼睛高光
+    cx.fillStyle = '#fff';
+    cx.beginPath(); cx.arc(S/2 - eyeSpacing + eyeSize*0.3, eyeY - eyeSize*0.3, eyeSize*0.35, 0, Math.PI*2); cx.fill();
+    cx.beginPath(); cx.arc(S/2 + eyeSpacing + eyeSize*0.3, eyeY - eyeSize*0.3, eyeSize*0.35, 0, Math.PI*2); cx.fill();
+    // 腮红
+    cx.fillStyle = 'rgba(255,150,150,0.35)';
+    cx.beginPath(); cx.ellipse(S*0.30, S*0.52, S*0.06, S*0.035, 0, 0, Math.PI*2); cx.fill();
+    cx.beginPath(); cx.ellipse(S*0.70, S*0.52, S*0.06, S*0.035, 0, 0, Math.PI*2); cx.fill();
+    // 微笑
+    cx.strokeStyle = '#2d3436'; cx.lineWidth = 1.5;
+    cx.beginPath();
+    cx.arc(S/2, S*0.52, S*0.06, 0.1*Math.PI, 0.9*Math.PI);
+    cx.stroke();
+  }
+
+  function makeBg(lv, levelIdx) {
+    const W = 576, H = 352;
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const cx = c.getContext('2d');
+
+    // 主题配色方案
+    const THEMES = {
+      grass: { bg1: '#a8e6a3', bg2: '#7cb86b', path: '#c8956b', pathBorder: '#8b6914', decor: ['#ff9ff3', '#feca57', '#48dbfb'] },
+      desert: { bg1: '#f5deb3', bg2: '#e0a857', path: '#d4a574', pathBorder: '#8b6914', decor: ['#ff9f43', '#feca57', '#ff6b6b'] },
+      snow: { bg1: '#c8ddf0', bg2: '#a8c8d8', path: '#e8f0f8', pathBorder: '#6c8ebf', decor: ['#74b9ff', '#a29bfe', '#dfe6e9'] },
+      volcano: { bg1: '#d4a0a0', bg2: '#a05050', path: '#8b4040', pathBorder: '#4a2020', decor: ['#ff7675', '#fdcb6e', '#e17055'] },
+      sky: { bg1: '#b8c8e8', bg2: '#98b8d8', path: '#d8e8f8', pathBorder: '#6c8ebf', decor: ['#a29bfe', '#74b9ff', '#fd79a8'] }
+    };
+    const theme = THEMES[lv.theme] || THEMES.grass;
+
+    // 第一层：渐变背景
+    const bgGrad = cx.createLinearGradient(0, 0, 0, H);
+    bgGrad.addColorStop(0, theme.bg1);
+    bgGrad.addColorStop(1, theme.bg2);
+    cx.fillStyle = bgGrad; cx.fillRect(0, 0, W, H);
+
+    // 第二层：大气效果（光晕、雾气）
+    const sunX = W * 0.8, sunY = H * 0.2;
+    const sunGlow = cx.createRadialGradient(sunX, sunY, 10, sunX, sunY, 150);
+    sunGlow.addColorStop(0, 'rgba(255,255,200,0.3)');
+    sunGlow.addColorStop(0.5, 'rgba(255,255,200,0.1)');
+    sunGlow.addColorStop(1, 'rgba(255,255,200,0)');
+    cx.fillStyle = sunGlow; cx.fillRect(0, 0, W, H);
+
+    // 第三层：网格点阵（微妙的纹理）
+    cx.fillStyle = 'rgba(0,0,0,0.03)';
+    for (let x = 0; x < W; x += 32) {
+      for (let y = 0; y < H; y += 32) {
+        cx.beginPath(); cx.arc(x+16, y+16, 1.5, 0, Math.PI*2); cx.fill();
+      }
+    }
+
+    // 第四层：路径
+    if (lv && lv.path) {
+      // 路径阴影
+      cx.fillStyle = 'rgba(0,0,0,0.15)';
+      for (const [pc, pr] of lv.path) {
+        cx.fillRect(pc * 32 + 2, pr * 32 + 2, 32, 32);
+      }
+      // 路径主体
+      const pathGrad = cx.createLinearGradient(0, 0, W, H);
+      pathGrad.addColorStop(0, theme.path);
+      pathGrad.addColorStop(1, darken(theme.path, 15));
+      cx.fillStyle = pathGrad;
+      for (const [pc, pr] of lv.path) {
+        cx.fillRect(pc * 32, pr * 32, 32, 32);
+      }
+      // 路径边框
+      cx.strokeStyle = theme.pathBorder; cx.lineWidth = 1;
+      for (const [pc, pr] of lv.path) {
+        cx.strokeRect(pc * 32 + 0.5, pr * 32 + 0.5, 31, 31);
+      }
+    }
+
+    // 第五层：装饰元素（散布的形状）
+    cx.globalAlpha = 0.12;
+    const seed = levelIdx * 13 + 7;
+    for (let i = 0; i < 15; i++) {
+      const x = ((seed + i * 47) % 17) * 34 + 16;
+      const y = ((seed + i * 31) % 10) * 35 + 16;
+      const color = theme.decor[i % theme.decor.length];
+      const size = 8 + (i % 3) * 4;
+      cx.fillStyle = color;
+      // 随机形状
+      if (i % 3 === 0) {
+        cx.beginPath(); cx.arc(x, y, size, 0, Math.PI*2); cx.fill();
+      } else if (i % 3 === 1) {
+        cx.beginPath(); cx.ellipse(x, y, size, size*0.6, i*0.5, 0, Math.PI*2); cx.fill();
+      } else {
+        drawStar(cx, x, y, 5, size, size*0.5);
+      }
+    }
+    cx.globalAlpha = 1;
+
+    // 第六层：空气路径（如果有）
+    if (lv && lv.airPath) {
+      cx.fillStyle = 'rgba(160, 200, 255, 0.12)';
+      for (const [pc, pr] of lv.airPath) {
+        cx.fillRect(pc * 32, pr * 32, 32, 32);
+      }
+      cx.strokeStyle = 'rgba(116, 185, 255, 0.3)';
+      cx.setLineDash([4, 4]);
+      for (const [pc, pr] of lv.airPath) {
+        cx.strokeRect(pc * 32 + 1, pr * 32 + 1, 30, 30);
+      }
+      cx.setLineDash([]);
+    }
+
+    // 直接返回 canvas 元素，避免 Image 异步加载问题
+    return c;
+  }
+
+  function startLevel(id) { setLevel(GD.LEVELS.find(l => l.id === id)); }
+
+  let lastTime = 0;
+  function loop(t) {
+    const dt = Math.min((t - lastTime) / 1000, 0.05);
+    lastTime = t;
+    if (state.scene === 'playing') {
+      if (!state.paused) { update(dt); updateSkillBar(); }
+      render();
+    } else if (state.scene === 'menu' || state.scene === 'levelSelect' || state.scene === 'talents') {
+      renderBg();
+    } else if (state.scene === 'won' || state.scene === 'lost') {
+      render();
+    }
+    requestAnimationFrame(loop);
+  }
+
+  return {
+    init, startLevel, updateProgress, updateProgressBar,
+    state, COLS, ROWS, TILE, W, H, PLAY_W, PLAY_H
+  };
+})();
