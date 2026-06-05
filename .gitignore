@@ -1,0 +1,11 @@
+.cache/
+*.png
+!index.html
+!data.js
+!game.js
+!server.py
+warmup.py
+warmup_runner.js
+debug*.html
+debug*.png
+test_*.png

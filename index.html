@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>保卫萝卜 v3 · Carrot Defense Mega</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; min-height: 100vh; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background:
+      radial-gradient(circle at 20% 20%, #fff5d6 0%, transparent 50%),
+      radial-gradient(circle at 80% 30%, #ffd6e0 0%, transparent 50%),
+      linear-gradient(135deg, #ffe5b4 0%, #ffadad 60%, #ffb3c6 100%);
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 14px;
+    user-select: none;
+    color: #2d3436;
+    overflow-x: hidden;
+  }
+  h1 {
+    color: #d35400;
+    margin-bottom: 4px;
+    font-size: 28px;
+    text-shadow: 2px 2px 0 #fff, 4px 4px 8px rgba(0,0,0,0.12);
+    letter-spacing: 3px;
+    animation: titleFloat 3s ease-in-out infinite;
+  }
+  @keyframes titleFloat {
+    0%, 100% { transform: translateY(0) rotate(-1deg); }
+    50% { transform: translateY(-4px) rotate(1deg); }
+  }
+  .subtitle { color: #b8541e; font-size: 12px; margin-bottom: 8px; letter-spacing: 4px; }
+  #wrap { position: relative; }
+  #game {
+    display: block;
+    background: #9adb88;
+    border-radius: 18px;
+    box-shadow: 0 16px 40px rgba(0,0,0,0.22), inset 0 0 0 4px #5b8a3a;
+    cursor: crosshair;
+    transition: box-shadow 0.18s;
+  }
+  #game.hit { box-shadow: 0 0 0 8px rgba(231,76,60,0.7), 0 16px 40px rgba(0,0,0,0.22), inset 0 0 0 4px #5b8a3a; }
+  #loading {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: rgba(255,255,255,0.97);
+    border-radius: 18px;
+    z-index: 30;
+    transition: opacity 0.4s;
+  }
+  #loading.hidden { opacity: 0; pointer-events: none; }
+  #loading p { color: #d35400; font-size: 19px; margin-bottom: 8px; font-weight: bold; }
+  #loading small { color: #888; font-size: 12px; margin-top: 6px; }
+  #progress { color: #636e72; font-size: 14px; margin-bottom: 8px; }
+  #progressBarBg { width: 220px; height: 8px; background: #ffeaa7; border-radius: 4px; overflow: hidden; }
+  #progressBar { height: 100%; background: linear-gradient(90deg, #e17055, #fdcb6e); width: 0%; transition: width 0.2s; }
+  .spinner {
+    width: 50px; height: 50px;
+    border: 5px solid #ffeaa7;
+    border-top-color: #e17055;
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+    margin-bottom: 18px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #waveBanner {
+    position: absolute; left: 0; right: 120px; top: 35%;
+    text-align: center;
+    pointer-events: none;
+    z-index: 5;
+  }
+  .wave-banner-text {
+    display: inline-block;
+    background: linear-gradient(135deg, #ff7675, #d63031);
+    color: white;
+    padding: 14px 44px;
+    border-radius: 50px;
+    font-size: 28px;
+    font-weight: bold;
+    letter-spacing: 4px;
+    box-shadow: 0 12px 32px rgba(214,48,49,0.5), inset 0 -4px 0 rgba(0,0,0,0.18);
+    transform: scale(0);
+    opacity: 0;
+  }
+  .wave-banner-text.show { animation: bannerPop 0.5s cubic-bezier(.34,1.56,.64,1) forwards, bannerHold 1.2s ease 0.5s, bannerOut 0.4s ease 1.7s forwards; }
+  @keyframes bannerPop { from { transform: scale(0) rotate(-15deg); opacity: 0; } to { transform: scale(1) rotate(0); opacity: 1; } }
+  @keyframes bannerHold { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+  @keyframes bannerOut { to { transform: scale(1.4); opacity: 0; } }
+
+  #hud {
+    margin-top: 12px;
+    display: flex; gap: 12px; align-items: center;
+    background: rgba(255,255,255,0.92);
+    padding: 8px 18px;
+    border-radius: 28px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.1);
+  }
+  .hud-item {
+    display: flex; align-items: center; gap: 6px;
+    font-weight: bold; font-size: 15px;
+    background: linear-gradient(180deg, #fff 0%, #fff5d6 100%);
+    padding: 3px 10px; border-radius: 14px;
+    box-shadow: inset 0 -2px 0 rgba(0,0,0,0.06);
+  }
+  .hud-item .heart { color: #ff4757; font-size: 18px; }
+  .hud-item .coin  { color: #ffa502; font-size: 18px; }
+  #skillBar { display: flex; gap: 6px; margin-left: 4px; }
+  .skill-btn {
+    width: 44px; height: 44px; border-radius: 50%;
+    background: linear-gradient(180deg, #fff 0%, #ffe5b4 100%);
+    border: 2px solid #e17055;
+    font-size: 18px; cursor: pointer;
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 0 #b85238, 0 4px 8px rgba(225,112,85,0.3);
+  }
+  .skill-btn.ready { background: linear-gradient(180deg, #ffe5b4 0%, #fdcb6e 100%); }
+  .skill-btn .cd {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0.55);
+    color: white; font-size: 11px; font-weight: bold;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .skill-btn .key { position: absolute; top: -6px; right: -6px; background: #d35400; color: white; font-size: 10px; padding: 1px 4px; border-radius: 6px; }
+  #nextWave {
+    margin-left: 4px;
+    padding: 8px 20px;
+    background: linear-gradient(180deg, #fdcb6e 0%, #e17055 100%);
+    border: none;
+    color: white;
+    font-weight: bold;
+    font-size: 14px;
+    border-radius: 20px;
+    cursor: pointer;
+    box-shadow: 0 3px 0 #b85238, 0 5px 10px rgba(225,112,85,0.4);
+    transition: transform 0.08s, box-shadow 0.08s;
+    letter-spacing: 1px;
+  }
+  #nextWave:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 0 #b85238, 0 7px 14px rgba(225,112,85,0.5); }
+  #nextWave:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 #b85238, 0 2px 6px rgba(225,112,85,0.3); }
+  #nextWave:disabled { background: linear-gradient(180deg, #b2bec3, #636e72); cursor: not-allowed; box-shadow: 0 3px 0 #444; opacity: 0.7; }
+
+  #shop {
+    margin-top: 10px;
+    display: flex; gap: 8px;
+    flex-wrap: wrap;
+    max-width: 696px;
+    justify-content: center;
+  }
+  .card {
+    width: 100px; height: 120px;
+    background: linear-gradient(180deg, #fff 0%, #fff8e7 100%);
+    border-radius: 12px;
+    border: 2px solid #dfe6e9;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: flex-start;
+    padding: 4px;
+    cursor: pointer;
+    transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s;
+    box-shadow: 0 3px 0 #c8d0d3, 0 5px 10px rgba(0,0,0,0.08);
+    position: relative;
+  }
+  .card:hover:not(.disabled) { transform: translateY(-2px); border-color: #fdcb6e; }
+  .card.selected {
+    border-color: #e17055;
+    box-shadow: 0 0 0 2px #ffeaa7, 0 3px 0 #c8d0d3, 0 5px 10px rgba(0,0,0,0.1);
+    animation: cardPulse 1.4s ease-in-out infinite;
+  }
+  @keyframes cardPulse {
+    0%, 100% { box-shadow: 0 0 0 2px #ffeaa7, 0 3px 0 #c8d0d3, 0 5px 12px rgba(225,112,85,0.2); }
+    50% { box-shadow: 0 0 0 5px rgba(255,234,167,0.6), 0 3px 0 #c8d0d3, 0 5px 14px rgba(225,112,85,0.4); }
+  }
+  .card.disabled { opacity: 0.45; cursor: not-allowed; filter: grayscale(0.4); }
+  .card-img {
+    width: 50px; height: 50px;
+    object-fit: contain;
+    pointer-events: none;
+    margin-top: 2px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #fff8e0 0%, #ffe5b4 100%);
+    padding: 2px;
+    box-shadow: inset 0 0 0 2px #fff, 0 2px 4px rgba(0,0,0,0.1);
+  }
+  .card-name { font-size: 12px; color: #2d3436; font-weight: bold; margin-top: 2px; }
+  .card-stats { font-size: 9px; color: #636e72; margin-top: 1px; font-weight: 600; }
+  .card-cost {
+    margin-top: auto;
+    font-size: 11px;
+    color: #b8541e;
+    font-weight: bold;
+    background: #fff5d6;
+    padding: 1px 6px;
+    border-radius: 6px;
+    border: 1px solid #fdcb6e;
+  }
+
+  #upgradePanel {
+    position: fixed;
+    right: 12px;
+    bottom: 80px;
+    background: linear-gradient(180deg, #fff, #fff8e7);
+    border: 3px solid #e17055;
+    border-radius: 14px;
+    padding: 10px 12px;
+    width: 200px;
+    z-index: 50;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+  }
+
+  #levelSelect {
+    position: fixed; inset: 0;
+    display: none;
+    flex-direction: column;
+    align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.6);
+    z-index: 100;
+    backdrop-filter: blur(6px);
+  }
+  #levelSelect > div, #levelSelect > h2, #levelSelect > button { position: relative; z-index: 1; }
+  #levelSelect {
+    background: rgba(0,0,0,0.55);
+  }
+
+  #overlay {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.6);
+    z-index: 100;
+    backdrop-filter: blur(6px);
+  }
+  #overlay.hidden { display: none; }
+  .modal {
+    background: linear-gradient(180deg, #fff 0%, #fff5e7 100%);
+    padding: 36px 60px;
+    border-radius: 24px;
+    text-align: center;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.4);
+    animation: pop 0.4s cubic-bezier(.34,1.56,.64,1);
+    border: 4px solid #fff;
+  }
+  @keyframes pop { from { transform: scale(0.5) rotate(-10deg); opacity: 0; } to { transform: scale(1) rotate(0); opacity: 1; } }
+  .modal h2 { font-size: 38px; margin-bottom: 8px; text-shadow: 2px 2px 0 #fff, 4px 4px 8px rgba(0,0,0,0.15); }
+  .modal p { color: #636e72; font-size: 15px; margin: 3px 0; }
+  .modal .stats { color: #d35400; font-size: 14px; margin: 8px 0; }
+  .modal button {
+    margin-top: 14px;
+    padding: 12px 36px;
+    background: linear-gradient(180deg, #fdcb6e, #e17055);
+    color: white;
+    border: none;
+    border-radius: 24px;
+    font-size: 15px;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 4px 0 #b85238, 0 6px 12px rgba(225,112,85,0.5);
+    letter-spacing: 2px;
+  }
+  .modal button:hover { transform: translateY(-1px); }
+  .modal button:active { transform: translateY(2px); box-shadow: 0 2px 0 #b85238; }
+</style>
+</head>
+<body>
+<h1>🥕 保卫萝卜 v3 · Mega Defense</h1>
+<div class="subtitle">CARROT DEFENSE MEGA · 30 塔 · 28 怪 · 5 关 · 英雄 · 天赋</div>
+<div id="wrap">
+  <canvas id="game" width="696" height="352"></canvas>
+  <div id="waveBanner"></div>
+  <div id="loading">
+    <div class="spinner"></div>
+    <p>正在召唤可爱素材…</p>
+    <div id="progress">0 / 0</div>
+    <div id="progressBarBg"><div id="progressBar"></div></div>
+    <small>AI 生图首次加载可能需要 30-60 秒,后续走磁盘秒开</small>
+  </div>
+</div>
+<div id="hud" style="display:none;">
+  <div class="hud-item"><span class="heart">❤</span><span id="lives">20</span></div>
+  <div class="hud-item"><span class="coin">🪙</span><span id="gold">150</span></div>
+  <div class="hud-item">波 <span id="waveNum">0</span></div>
+  <div id="skillBar"></div>
+  <button id="nextWave">▶ 开始第 1 波</button>
+</div>
+<div id="shop" style="display:none;"></div>
+<div id="levelSelect"></div>
+<div id="upgradePanel" style="display:none;"></div>
+<div id="overlay" class="hidden">
+  <div class="modal">
+    <h2 id="resultTitle">游戏结束</h2>
+    <p id="resultText">再来一局？</p>
+    <p class="stats" id="resultStats"></p>
+    <button>← 返回关卡选择</button>
+  </div>
+</div>
+<script src="data.js?v=9"></script>
+<script src="game.js?v=9"></script>
+<script>Game.init();</script>
+</body>
+</html>
