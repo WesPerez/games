@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>游戏大厅 - Game Hub</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    overflow: hidden;
+  }
+  .stars {
+    position: fixed; inset: 0;
+    background: radial-gradient(2px 2px at 20px 30px, #eee, transparent),
+                radial-gradient(2px 2px at 40px 70px, #fff, transparent),
+                radial-gradient(1px 1px at 90px 40px, #ddd, transparent),
+                radial-gradient(1px 1px at 130px 80px, #fff, transparent),
+                radial-gradient(2px 2px at 160px 30px, #ddd, transparent);
+    background-size: 200px 100px;
+    animation: twinkle 5s ease-in-out infinite alternate;
+    pointer-events: none;
+    z-index: 0;
+  }
+  @keyframes twinkle { from { opacity: 0.5; } to { opacity: 1; } }
+  h1 {
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    font-weight: 900;
+    margin-bottom: 8px;
+    background: linear-gradient(135deg, #f093fb, #f5576c, #ffd200);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: none;
+    z-index: 1;
+    letter-spacing: 2px;
+  }
+  .subtitle {
+    color: rgba(255,255,255,0.5);
+    font-size: 14px;
+    margin-bottom: 48px;
+    letter-spacing: 6px;
+    z-index: 1;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 24px;
+    max-width: 800px;
+    width: 90%;
+    z-index: 1;
+  }
+  @media (max-width: 600px) {
+    .grid { grid-template-columns: 1fr; }
+  }
+  .card {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 20px;
+    padding: 32px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    text-decoration: none;
+    color: #fff;
+    position: relative;
+    overflow: hidden;
+    backdrop-filter: blur(12px);
+  }
+  .card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 20px;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .card:nth-child(1)::before { background: linear-gradient(135deg, rgba(255,107,107,0.15), rgba(255,217,61,0.15)); }
+  .card:nth-child(2)::before { background: linear-gradient(135deg, rgba(0,229,255,0.15), rgba(124,58,237,0.15)); }
+  .card:nth-child(3)::before { background: linear-gradient(135deg, rgba(92,148,252,0.15), rgba(229,37,33,0.15)); }
+  .card:nth-child(4)::before { background: linear-gradient(135deg, rgba(76,175,80,0.15), rgba(139,195,74,0.15)); }
+  .card:hover {
+    transform: translateY(-6px) scale(1.02);
+    border-color: rgba(255,255,255,0.35);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  }
+  .card:hover::before { opacity: 1; }
+  .card-icon {
+    font-size: 3.5rem;
+    margin-bottom: 16px;
+    display: block;
+    filter: drop-shadow(0 4px 8px rgba(0,0,0,0.3));
+  }
+  .card h2 {
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .card p {
+    font-size: 0.82rem;
+    color: rgba(255,255,255,0.55);
+    line-height: 1.5;
+  }
+  .card .tag {
+    display: inline-block;
+    margin-top: 12px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 1px;
+  }
+  .card:nth-child(1) .tag { background: rgba(255,107,107,0.25); color: #ff6b6b; }
+  .card:nth-child(2) .tag { background: rgba(0,229,255,0.2); color: #00e5ff; }
+  .card:nth-child(3) .tag { background: rgba(92,148,252,0.25); color: #5c94fc; }
+  .card:nth-child(4) .tag { background: rgba(76,175,80,0.25); color: #8bc34a; }
+  .footer {
+    margin-top: 48px;
+    color: rgba(255,255,255,0.25);
+    font-size: 12px;
+    z-index: 1;
+  }
+</style>
+</head>
+<body>
+<div class="stars"></div>
+<h1>Game Hub</h1>
+<p class="subtitle">4 GAMES &middot; MEGA EDITION</p>
+<div class="grid">
+  <a class="card" href="/carrot-defense/index.html">
+    <span class="card-icon">🥕</span>
+    <h2>保卫萝卜</h2>
+    <p>38 塔 &middot; 36 怪 &middot; 8 关 &middot; 英雄 &middot; 天赋 &middot; 成就</p>
+    <span class="tag">TOWER DEFENSE</span>
+  </a>
+  <a class="card" href="/chemistry-game/chemistry-game.html">
+    <span class="card-icon">🧪</span>
+    <h2>化学大挑战</h2>
+    <p>7 模式 &middot; 707 化合物 &middot; 423 方程 &middot; XP &middot; 成就</p>
+    <span class="tag">EDUCATION</span>
+  </a>
+  <a class="card" href="/super_mario/index.html">
+    <span class="card-icon">🍄</span>
+    <h2>超级玛丽</h2>
+    <p>3 关 &middot; 6 敌人 &middot; 冰花 &middot; 检查点 &middot; 视差滚动</p>
+    <span class="tag">PLATFORMER</span>
+  </a>
+  <a class="card" href="http://localhost:8083/" target="_blank">
+    <span class="card-icon">🌻</span>
+    <h2>植物大战僵尸</h2>
+    <p>10 植物 &middot; 7 僵尸 &middot; 6 波 &middot; 割草机 &middot; 暂停</p>
+    <span class="tag">STRATEGY</span>
+  </a>
+</div>
+<p class="footer">Click a card to start playing</p>
+</body>
+</html>

@@ -3,445 +3,1661 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>化学问答游戏</title>
-<script src="chem-data-v2.js"></script>
-<script src="chem-equations-v2.js"></script>
-<script src="chem-puzzles-v2.js"></script>
-<script src="chem-symbols-v2.js"></script>
+<title>化学知识大挑战</title>
 <style>
-:root {
-  --bg: #0a0e17; --surface: #111827; --surface2: #1a2235;
-  --cyan: #06b6d4; --cyan2: #22d3ee; --magenta: #d946ef;
-  --green: #10b981; --red: #ef4444; --amber: #f59e0b;
-  --text: #e2e8f0; --text2: #94a3b8; --border: #1e293b;
-  --gold: #fbbf24; --radius: 12px; --glass: rgba(17,24,39,0.75);
-  --cat-alkali: #f97316; --cat-alkaline: #eab308;
-  --cat-transition: #ef4444; --cat-poor: #22c55e;
-  --cat-metalloid: #06b6d4; --cat-nonmetal: #8b5cf6;
-  --cat-halogen: #ec4899; --cat-noble: #6366f1;
-  --cat-lanthanide: #14b8a6; --cat-actinide: #f43f5e;
-}
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
-#particles{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0}
-.container{position:relative;z-index:1;max-width:900px;margin:0 auto;padding:12px}
-header{text-align:center;padding:20px 0 10px}
-h1{font-size:clamp(1.5rem,4vw,2.2rem);background:linear-gradient(135deg,var(--cyan),var(--magenta));-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-weight:800}
-.subtitle{color:var(--text2);font-size:0.9rem;margin-top:4px}
-.top-bar{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;align-items:center;margin:8px 0}
-.stat-pill{background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:6px 14px;font-size:0.85rem;display:flex;align-items:center;gap:6px}
-.stat-pill .icon{font-size:1rem}.stat-pill .val{font-weight:700;color:var(--cyan2)}
-.combo-badge{background:linear-gradient(135deg,#f59e0b,#ef4444);color:#000;border-radius:20px;padding:4px 12px;font-weight:800;font-size:0.8rem;animation:pulse 0.5s ease;display:none}
-.combo-badge.show{display:inline-block}
-@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}
-.diff-selector{display:flex;gap:4px;background:var(--surface2);border-radius:20px;padding:3px}
-.diff-btn{border:none;background:transparent;color:var(--text2);padding:5px 12px;border-radius:17px;cursor:pointer;font-size:0.8rem;transition:all 0.2s;font-weight:600}
-.diff-btn.active{background:var(--cyan);color:#000}
-.mode-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin:12px 0}
-.mode-card{background:var(--glass);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--border);border-radius:var(--radius);padding:16px;cursor:pointer;transition:all 0.3s;position:relative;overflow:hidden}
-.mode-card:hover{transform:translateY(-3px);border-color:var(--cyan);box-shadow:0 8px 32px rgba(6,182,212,0.15)}
-.mode-card .mode-icon{font-size:2rem;margin-bottom:8px}
-.mode-card .mode-name{font-weight:700;font-size:1rem;margin-bottom:4px}
-.mode-card .mode-desc{font-size:0.75rem;color:var(--text2)}
-.mode-card.new-badge{position:relative}
-.mode-card.new-badge::after{content:'NEW';position:absolute;top:8px;right:8px;background:var(--magenta);color:#fff;font-size:0.6rem;font-weight:800;padding:2px 6px;border-radius:8px}
-.game-area{background:var(--glass);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin:12px 0;display:none}
-.game-area.active{display:block}
-.game-header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:16px}
-.game-header h2{font-size:1.2rem;color:var(--cyan2)}
-.game-header .timer{font-size:1.1rem;font-weight:700;color:var(--amber)}
-.game-header .timer.urgent{color:var(--red);animation:pulse 0.5s ease infinite}
-.progress-bar{height:4px;background:var(--border);border-radius:2px;margin-bottom:16px;overflow:hidden}
-.progress-fill{height:100%;background:linear-gradient(90deg,var(--cyan),var(--magenta));border-radius:2px;transition:width 0.3s}
-.question-card{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:12px;text-align:center;transition:all 0.3s}
-.question-card.correct{border-color:var(--green);box-shadow:0 0 20px rgba(16,185,129,0.3);animation:flashGreen 0.5s}
-.question-card.wrong{border-color:var(--red);box-shadow:0 0 20px rgba(239,68,68,0.3);animation:shake 0.5s}
-@keyframes flashGreen{0%,100%{background:var(--surface2)}50%{background:rgba(16,185,129,0.15)}}
-@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
-.q-text{font-size:1.1rem;font-weight:600;margin-bottom:12px;line-height:1.5}
-.q-formula{font-size:2rem;font-weight:800;color:var(--cyan);margin:8px 0;letter-spacing:2px}
-.options-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
-.opt-btn{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;color:var(--text);cursor:pointer;font-size:0.9rem;transition:all 0.2s;text-align:center}
-.opt-btn:hover{background:var(--surface2);border-color:var(--cyan)}
-.opt-btn.selected{background:rgba(6,182,212,0.2);border-color:var(--cyan)}
-.opt-btn.correct{background:rgba(16,185,129,0.2);border-color:var(--green)}
-.opt-btn.wrong{background:rgba(239,68,68,0.2);border-color:var(--red)}
-.opt-btn:disabled{cursor:default;opacity:0.7}
-.feedback-toast{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(0);font-size:2rem;font-weight:900;pointer-events:none;z-index:100;transition:transform 0.3s cubic-bezier(0.175,0.885,0.32,1.275)}
-.feedback-toast.show{transform:translate(-50%,-50%) scale(1)}
-.feedback-toast.correct{color:var(--green)}.feedback-toast.wrong{color:var(--red)}
-.answer-reveal{text-align:center;margin-top:10px;padding:10px;background:var(--surface);border-radius:8px;font-size:0.85rem;color:var(--text2)}
-.answer-reveal .correct-ans{color:var(--green);font-weight:700}
-.answer-reveal .hint{color:var(--amber)}
-.result-screen{text-align:center;padding:20px}
-.result-screen .big-score{font-size:3rem;font-weight:900;background:linear-gradient(135deg,var(--cyan),var(--magenta));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.result-screen .xp-gain{color:var(--amber);font-size:1.1rem;margin:8px 0}
-.result-stats{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin:16px 0}
-.result-stat{background:var(--surface2);border-radius:12px;padding:12px 20px;text-align:center}
-.result-stat .num{font-size:1.5rem;font-weight:800;color:var(--cyan2)}
-.result-stat .lbl{font-size:0.75rem;color:var(--text2)}
-.btn{background:linear-gradient(135deg,var(--cyan),#0891b2);color:#000;border:none;padding:10px 24px;border-radius:20px;font-weight:700;cursor:pointer;font-size:0.9rem;transition:all 0.2s}
-.btn:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(6,182,212,0.3)}
-.btn.secondary{background:var(--surface2);color:var(--text);border:1px solid var(--border)}
-.btn.danger{background:linear-gradient(135deg,var(--red),#dc2626)}
-.btn.small{padding:6px 14px;font-size:0.8rem}
-.periodic-table-wrap{overflow-x:auto;margin:10px 0}
-.pt-grid{display:grid;grid-template-columns:repeat(18,1fr);gap:2px;min-width:600px}
-.pt-el{aspect-ratio:1;border-radius:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:0.55rem;cursor:pointer;transition:all 0.15s;position:relative;border:1px solid transparent;min-width:28px}
-.pt-el:hover{transform:scale(1.2);z-index:10;box-shadow:0 4px 16px rgba(0,0,0,0.5)}
-.pt-el .sym{font-weight:800;font-size:0.7rem}
-.pt-el .num{font-size:0.45rem;color:var(--text2)}
-.pt-el.highlight{border-color:var(--gold);box-shadow:0 0 8px rgba(251,191,36,0.5)}
-.pt-el.dim{opacity:0.3}
-.pt-search{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap}
-.pt-search input{flex:1;min-width:150px;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:8px 14px;color:var(--text);font-size:0.85rem}
-.pt-search input:focus{outline:none;border-color:var(--cyan)}
-.pt-legend{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0;font-size:0.7rem}
-.pt-legend span{padding:2px 8px;border-radius:10px;font-weight:600}
-.element-popup{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:200;display:none;align-items:center;justify-content:center}
-.element-popup.show{display:flex}
-.popup-content{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:24px;max-width:380px;width:90%;position:relative}
-.popup-close{position:absolute;top:8px;right:12px;background:none;border:none;color:var(--text2);font-size:1.5rem;cursor:pointer}
-.popup-el-sym{font-size:3rem;font-weight:900;text-align:center}
-.popup-el-name{text-align:center;font-size:1.2rem;color:var(--text2)}
-.popup-props{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
-.popup-prop{background:var(--surface2);padding:8px;border-radius:8px}
-.popup-prop .prop-lbl{font-size:0.7rem;color:var(--text2)}
-.popup-prop .prop-val{font-weight:700;font-size:0.85rem}
-.stats-page{display:none}
-.stats-page.active{display:block}
-.stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin:12px 0}
-.stats-card{background:var(--glass);backdrop-filter:blur(12px);border:1px solid var(--border);border-radius:var(--radius);padding:16px;text-align:center}
-.stats-card h3{font-size:0.9rem;color:var(--text2);margin-bottom:8px}
-.stats-card .stat-val{font-size:2rem;font-weight:900;color:var(--cyan2)}
-.stats-card .stat-sub{font-size:0.75rem;color:var(--text2)}
-.level-bar{height:6px;background:var(--border);border-radius:3px;margin:8px 0;overflow:hidden}
-.level-fill{height:100%;background:linear-gradient(90deg,var(--cyan),var(--magenta));border-radius:3px;transition:width 0.5s}
-.achievement{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:10px;margin:4px 0}
-.achievement.locked{opacity:0.5}
-.achievement .ach-icon{font-size:1.5rem}
-.achievement .ach-info{flex:1}
-.achievement .ach-name{font-weight:700;font-size:0.85rem}
-.achievement .ach-desc{font-size:0.7rem;color:var(--text2)}
-.daily-challenge{background:linear-gradient(135deg,rgba(251,191,36,0.1),rgba(245,158,11,0.1));border:1px solid var(--gold);border-radius:var(--radius);padding:16px;margin:12px 0;text-align:center}
-.daily-challenge h3{color:var(--gold)}
-.daily-challenge .dc-reward{font-size:0.8rem;color:var(--text2)}
-.score-popup{position:fixed;pointer-events:none;z-index:150;font-weight:900;font-size:1.2rem;animation:scoreUp 1s ease-out forwards}
-@keyframes scoreUp{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-60px)}}
-@keyframes floatIn{0%{opacity:0;transform:translateY(20px)}100%{opacity:1;transform:translateY(0)}}
-.mode-card,.game-area{animation:floatIn 0.4s ease}
-.nav-tabs{display:flex;gap:4px;background:var(--surface2);border-radius:20px;padding:3px;margin:8px 0;overflow-x:auto}
-.nav-tab{border:none;background:transparent;color:var(--text2);padding:6px 14px;border-radius:17px;cursor:pointer;font-size:0.8rem;white-space:nowrap;font-weight:600}
-.nav-tab.active{background:var(--cyan);color:#000}
-@media(max-width:600px){
-  .mode-grid{grid-template-columns:repeat(2,1fr);gap:8px}
-  .mode-card{padding:12px}
-  .options-grid{grid-template-columns:1fr 1fr}
-  .pt-grid{grid-template-columns:repeat(18,1fr);font-size:0.4rem}
-  .pt-el .sym{font-size:0.5rem}.pt-el .num{font-size:0.35rem}
-  .result-stats{flex-direction:column}
-  h1{font-size:1.3rem}
-}
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap');
+
+  :root {
+    --bg: #0a0e1a;
+    --surface: #111827;
+    --surface2: #1a2235;
+    --border: #2a3550;
+    --accent: #00e5ff;
+    --accent2: #7c3aed;
+    --accent3: #f43f5e;
+    --gold: #fbbf24;
+    --text: #e2e8f0;
+    --text-dim: #64748b;
+    --success: #10b981;
+    --danger: #ef4444;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Noto Sans SC', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  .bg-grid {
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px);
+    background-size: 60px 60px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .particle {
+    position: fixed;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 0;
+    animation: float linear infinite;
+  }
+  @keyframes float {
+    0% { transform: translateY(100vh) scale(0); opacity: 0; }
+    10% { opacity: 1; }
+    90% { opacity: 1; }
+    100% { transform: translateY(-10vh) scale(1); opacity: 0; }
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 24px 16px;
+  }
+
+  header {
+    text-align: center;
+    padding: 40px 0 24px;
+  }
+  header h1 { font-size: clamp(1.8rem, 5vw, 3rem); font-weight: 900; margin-bottom: 8px; }
+  .title-icon { font-size: 1em; vertical-align: middle; }
+  .title-text { background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  header p { color: var(--text-dim); font-size: 1rem; font-weight: 300; }
+
+  /* Screens */
+  .screen { display: none; animation: fadeIn 0.4s ease; }
+  .screen.active { display: block; }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Home */
+  .hero-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    padding: 48px 32px;
+    text-align: center;
+    margin-bottom: 32px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero-card::before {
+    content: '';
+    position: absolute;
+    top: -50%; left: -50%;
+    width: 200%; height: 200%;
+    background: radial-gradient(circle at 30% 50%, rgba(0,229,255,0.06) 0%, transparent 50%),
+                radial-gradient(circle at 70% 50%, rgba(124,58,237,0.06) 0%, transparent 50%);
+    pointer-events: none;
+  }
+  .hero-card .formula {
+    font-size: 3.5rem;
+    font-weight: 900;
+    letter-spacing: 4px;
+    margin-bottom: 16px;
+    color: var(--accent);
+  }
+  .hero-card .subtitle {
+    color: var(--text-dim);
+    font-size: 1.05rem;
+    line-height: 1.7;
+    max-width: 520px;
+    margin: 0 auto 32px;
+  }
+
+  .mode-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-top: 8px;
+  }
+  @media (max-width: 560px) {
+    .mode-grid { grid-template-columns: 1fr; }
+  }
+  .mode-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px 20px;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .mode-card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 16px;
+    opacity: 0;
+    background: linear-gradient(135deg, rgba(0,229,255,0.1), rgba(124,58,237,0.1));
+    transition: opacity 0.25s;
+  }
+  .mode-card:hover {
+    border-color: var(--accent);
+    transform: translateY(-3px);
+    box-shadow: 0 12px 40px rgba(0,229,255,0.12);
+  }
+  .mode-card:hover::after { opacity: 1; }
+  .mode-icon { font-size: 2.4rem; margin-bottom: 12px; display: block; }
+  .mode-card h3 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-bottom: 6px;
+    color: var(--accent);
+  }
+  .mode-card p {
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+  .mode-badge {
+    position: absolute;
+    top: 12px; right: 12px;
+    background: var(--accent2);
+    color: #fff;
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 20px;
+    letter-spacing: 0.5px;
+  }
+
+  /* Quiz header */
+  .quiz-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .score-board { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .score-chip {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 100px;
+    padding: 6px 14px;
+    font-size: 0.82rem;
+    font-weight: 600;
+  }
+  .score-chip .val { color: var(--accent); }
+  .score-chip .val.wrong { color: var(--danger); }
+  .score-chip .val.right { color: var(--success); }
+
+  /* Top action bar */
+  .top-actions {
+    display: flex;
+    gap: 8px;
+  }
+  .btn-sm {
+    padding: 6px 14px;
+    border-radius: 100px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text-dim);
+    transition: all 0.2s;
+  }
+  .btn-sm:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .progress-bar-wrap {
+    background: var(--surface2);
+    border-radius: 8px;
+    height: 8px;
+    overflow: hidden;
+    margin-bottom: 24px;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 8px;
+    transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    width: 0%;
+  }
+
+  /* Question card */
+  .question-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 28px 24px;
+    margin-bottom: 20px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .question-tag {
+    display: inline-block;
+    background: linear-gradient(135deg, var(--accent2), var(--accent));
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 4px 12px;
+    border-radius: 20px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+  .question-text {
+    font-size: clamp(1.1rem, 3vw, 1.4rem);
+    font-weight: 700;
+    line-height: 1.5;
+    margin-bottom: 8px;
+  }
+  .question-sub {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    margin-bottom: 16px;
+  }
+
+  /* Choices */
+  .choices-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  @media (max-width: 480px) {
+    .choices-grid { grid-template-columns: 1fr 1fr; }
+  }
+  .choice-btn {
+    background: var(--surface2);
+    border: 2px solid var(--border);
+    border-radius: 14px;
+    padding: 16px 12px;
+    color: var(--text);
+    font-size: 1rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+    min-height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1.4;
+  }
+  .choice-btn:hover:not(:disabled) {
+    border-color: var(--accent);
+    background: rgba(0,229,255,0.06);
+    transform: scale(1.02);
+  }
+  .choice-btn.correct {
+    border-color: var(--success);
+    background: rgba(16,185,129,0.15);
+    color: var(--success);
+    animation: pop 0.3s ease;
+  }
+  .choice-btn.wrong {
+    border-color: var(--danger);
+    background: rgba(239,68,68,0.15);
+    color: var(--danger);
+    animation: shake 0.3s ease;
+  }
+  .choice-btn:disabled { cursor: default; }
+
+  @keyframes pop {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.08); }
+    100% { transform: scale(1); }
+  }
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-6px); }
+    40% { transform: translateX(6px); }
+    60% { transform: translateX(-4px); }
+    80% { transform: translateX(4px); }
+  }
+
+  /* Periodic table */
+  .periodic-table-wrap {
+    overflow-x: auto;
+    margin-bottom: 20px;
+    padding-bottom: 8px;
+  }
+  .periodic-table {
+    display: grid;
+    grid-template-columns: repeat(18, minmax(44px, 1fr));
+    gap: 3px;
+    width: 100%;
+    min-width: 900px;
+  }
+  .pt-cell {
+    aspect-ratio: 1;
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s;
+    position: relative;
+    border: 1px solid transparent;
+    font-size: 0.6rem;
+    padding: 2px;
+    min-width: 44px;
+  }
+  .pt-cell:hover {
+    transform: scale(1.15);
+    z-index: 5;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  }
+  .pt-cell .pt-num { position: absolute; top: 2px; left: 3px; font-size: 0.5rem; opacity: 0.7; }
+  .pt-cell .pt-sym { font-size: 0.9rem; font-weight: 800; line-height: 1.1; }
+  .pt-cell .pt-name { font-size: 0.4rem; opacity: 0.75; text-align: center; line-height: 1.1; }
+  .pt-cell.empty { background: transparent; cursor: default; pointer-events: none; }
+  .pt-cell.wrong-click { animation: shake 0.3s ease; }
+  .pt-cell.dim { opacity: 0.2; }
+
+  /* Answer feedback */
+  .answer-feedback {
+    text-align: center;
+    padding: 16px;
+    border-radius: 14px;
+    margin-bottom: 16px;
+    animation: fadeIn 0.3s;
+  }
+  .answer-feedback .emoji { font-size: 2.5rem; margin-bottom: 8px; }
+  .answer-feedback .msg { font-size: 1.1rem; font-weight: 700; }
+  .answer-feedback .detail { font-size: 0.85rem; color: var(--text-dim); margin-top: 6px; }
+  .answer-feedback.correct-msg { background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.3); }
+  .answer-feedback.wrong-msg { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); }
+
+  /* Buttons */
+  .btn-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 8px; }
+  .btn {
+    padding: 12px 28px;
+    border-radius: 100px;
+    font-size: 0.95rem;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .btn-primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,229,255,0.3); }
+  .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .btn-secondary:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .btn:disabled { opacity: 0.4; cursor: default; transform: none !important; }
+
+  /* Result screen */
+  .result-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    padding: 40px 28px;
+    text-align: center;
+    max-width: 500px;
+    margin: 0 auto 24px;
+    position: relative;
+    overflow: hidden;
+  }
+  .result-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; height: 4px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2), var(--gold));
+  }
+  .result-emoji { font-size: 4rem; margin-bottom: 12px; }
+  .result-title { font-size: 1.6rem; font-weight: 900; margin-bottom: 6px; }
+  .result-score {
+    font-size: 3rem;
+    font-weight: 900;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin: 16px 0;
+  }
+  .result-breakdown { display: flex; justify-content: center; gap: 24px; margin: 20px 0; }
+  .result-stat { text-align: center; }
+  .result-stat .num { font-size: 1.8rem; font-weight: 900; }
+  .result-stat .label { font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+  .result-stat .num.correct-color { color: var(--success); }
+  .result-stat .num.wrong-color { color: var(--danger); }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 100px;
+    padding: 12px 24px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    z-index: 999;
+    transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .toast.success { border-color: var(--success); color: var(--success); }
+  .toast.error { border-color: var(--danger); color: var(--danger); }
+  .toast.info { border-color: var(--accent); color: var(--accent); }
+
+  /* Compound card game specific */
+  .compound-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-bottom: 16px;
+    max-width: 580px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  @media (max-width: 520px) {
+    .compound-grid { grid-template-columns: repeat(3, 1fr); max-width: none; }
+  }
+  .compound-card {
+    background: var(--surface2);
+    border: 2px solid var(--border);
+    border-radius: 14px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, opacity 0.2s;
+    font-size: 0.88rem;
+    aspect-ratio: 1;
+  }
+  .compound-card:hover:not(.flipped):not(.matched) {
+    border-color: var(--accent);
+  }
+  .compound-card:hover:not(.flipped):not(.matched) .compound-card-inner {
+    transform: scale(1.03);
+  }
+  .compound-card .c-formula {
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: var(--accent);
+    margin-bottom: 4px;
+  }
+  .compound-card .c-name {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    line-height: 1.3;
+  }
+  /* 3D Flip card structure */
+  .compound-card {
+    perspective: 800px;
+    aspect-ratio: 1;
+  }
+  .compound-card-inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    transform-style: preserve-3d;
+    transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .compound-card-face {
+    position: absolute;
+    inset: 0;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+  }
+  .compound-card-front {
+    background: var(--surface2);
+    border: 2px solid var(--border);
+    padding: 14px 8px;
+  }
+  .compound-card-back {
+    background: rgba(124,58,237,0.12);
+    border: 2px solid var(--accent2);
+    transform: rotateY(180deg);
+    padding: 14px 8px;
+  }
+  .compound-card.flipped .compound-card-inner,
+  .compound-card.preview-flipped .compound-card-inner {
+    transform: rotateY(180deg);
+  }
+  .compound-card.matched {
+    opacity: 0.35;
+    cursor: default;
+  }
+  .compound-card.matched .compound-card-face {
+    border-color: var(--success) !important;
+  }
+  .compound-card.matched .compound-card-inner {
+    transform: rotateY(180deg) !important;
+  }
+
+  /* Equation builder */
+  .equation-display {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px 16px;
+    margin-bottom: 20px;
+    text-align: center;
+  }
+  .eq-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 1.3rem;
+    font-weight: 700;
+  }
+  .eq-plus { color: var(--text-dim); font-size: 1.2rem; }
+  .eq-arrow { color: var(--gold); font-size: 1.4rem; margin: 0 12px; }
+  .eq-species {
+    background: rgba(0,229,255,0.08);
+    border: 1px solid rgba(0,229,255,0.2);
+    border-radius: 8px;
+    padding: 8px 12px;
+    min-width: 60px;
+    color: var(--accent);
+  }
+  .eq-species sub { font-size: 0.65em; }
+  .eq-blank {
+    display: inline-block;
+    width: 36px;
+    height: 36px;
+    border: 2px dashed var(--accent);
+    border-radius: 8px;
+    background: rgba(0,229,255,0.05);
+    color: var(--accent);
+    font-size: 1.1rem;
+    font-weight: 800;
+    line-height: 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .eq-blank:hover { background: rgba(0,229,255,0.12); }
+  .eq-blank.filled { border-style: solid; border-color: var(--success); color: var(--success); }
+  .eq-blank.wrong { border-color: var(--danger); color: var(--danger); animation: shake 0.3s; }
+
+  .coef-options {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .coef-btn {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    border: 2px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    font-size: 1.2rem;
+    font-weight: 800;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .coef-btn:hover { border-color: var(--accent); color: var(--accent); transform: scale(1.08); }
+  .coef-btn.selected { border-color: var(--accent); background: rgba(0,229,255,0.1); color: var(--accent); }
+  .coef-btn:disabled { opacity: 0.3; cursor: default; }
+
+  /* Category rush */
+  .category-display {
+    font-size: 2rem;
+    font-weight: 900;
+    color: var(--accent);
+    padding: 24px;
+    background: var(--surface2);
+    border: 2px solid var(--border);
+    border-radius: 16px;
+    margin-bottom: 20px;
+    text-align: center;
+  }
+  .category-btns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  @media (max-width: 480px) {
+    .category-btns { grid-template-columns: 1fr; }
+  }
+  .cat-btn {
+    padding: 20px 16px;
+    border-radius: 14px;
+    border: 2px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+  }
+  .cat-btn:hover { border-color: var(--accent); transform: scale(1.02); }
+  .cat-btn.correct { border-color: var(--success); background: rgba(16,185,129,0.15); color: var(--success); animation: pop 0.3s; }
+  .cat-btn.wrong { border-color: var(--danger); background: rgba(239,68,68,0.15); color: var(--danger); animation: shake 0.3s; }
+
+  /* Countdown */
+  .countdown-ring {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 52px;
+    height: 52px;
+    position: relative;
+  }
+  .countdown-ring svg { position: absolute; width: 100%; height: 100%; transform: rotate(-90deg); }
+  .countdown-ring circle { fill: none; stroke-width: 4; }
+  .countdown-ring .bg { stroke: var(--border); }
+  .countdown-ring .fg { stroke: var(--accent); stroke-dasharray: 151; stroke-dashoffset: 0; transition: stroke-dashoffset linear; }
+  .countdown-ring .fg.warning { stroke: var(--gold); }
+  .countdown-ring .fg.danger { stroke: var(--danger); }
+  .countdown-num { position: relative; font-size: 1rem; font-weight: 800; color: var(--accent); z-index: 1; }
+
+  /* Streak display */
+  .streak-badge {
+    background: linear-gradient(135deg, var(--gold), #f97316);
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 800;
+    padding: 3px 10px;
+    border-radius: 100px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    animation: pop 0.3s ease;
+  }
+  @keyframes streakPop {
+    0% { transform: scale(1) rotate(0deg); }
+    50% { transform: scale(1.3) rotate(-5deg); }
+    100% { transform: scale(1) rotate(0deg); }
+  }
+  .streak-badge.pop { animation: streakPop 0.4s ease; }
+
+  /* Input for symbol type */
+  .symbol-input-wrap {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    margin-bottom: 16px;
+  }
+  .symbol-input {
+    background: var(--surface2);
+    border: 2px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 20px;
+    font-size: 1.5rem;
+    font-weight: 900;
+    color: var(--accent);
+    text-align: center;
+    width: 120px;
+    font-family: inherit;
+    text-transform: uppercase;
+    letter-spacing: 4px;
+    transition: border-color 0.2s;
+  }
+  .symbol-input:focus { outline: none; border-color: var(--accent); }
+  .symbol-input.correct { border-color: var(--success); color: var(--success); }
+  .symbol-input.wrong { border-color: var(--danger); color: var(--danger); animation: shake 0.3s; }
 </style>
 </head>
 <body>
-<canvas id="particles"></canvas>
+
+<div class="bg-grid"></div>
+<div id="particles"></div>
+
 <div class="container">
-  <header>
-    <h1>化学问答游戏</h1>
-    <div class="subtitle">⚗️ 探索化学元素的奇妙世界</div>
-  </header>
-  <div class="top-bar">
-    <div class="stat-pill"><span class="icon">⭐</span>Lv.<span class="val" id="levelNum">1</span></div>
-    <div class="stat-pill"><span class="icon">✨</span><span class="val" id="xpNum">0</span> XP</div>
-    <div class="stat-pill"><span class="icon">🔥</span>连击:<span class="val" id="comboNum">0</span></div>
-    <div class="combo-badge" id="comboBadge">🔥 x3!</div>
-    <div class="diff-selector" id="diffSelector">
-      <button class="diff-btn" data-diff="easy">简单</button>
-      <button class="diff-btn active" data-diff="medium">中等</button>
-      <button class="diff-btn" data-diff="hard">困难</button>
+
+  <!-- HOME -->
+  <div class="screen active" id="screenHome">
+    <header>
+      <h1><span class="title-icon">🧪</span> <span class="title-text">化学知识大挑战</span></h1>
+      <p>四道关卡，测测你的化学功底！</p>
+    </header>
+
+    <div class="hero-card">
+      <div class="formula">⚗️ H₂O + NaCl → 💡</div>
+      <p class="subtitle">
+        四个玩法完全不同的化学小游戏：<br>
+        化合物配对、方程式配平、物质推断、符号速记——<br>
+        每次题目随机，知识聚焦初中化学！
+      </p>
+      <div class="mode-grid">
+        <div class="mode-card" onclick="startQuiz('symbol')">
+          <span class="mode-badge">入门</span>
+          <span class="mode-icon">⌨️</span>
+          <h3>符号速记</h3>
+          <p>根据化合物名称，输入正确化学式，计时挑战</p>
+        </div>
+        <div class="mode-card" onclick="startQuiz('puzzle')">
+          <span class="mode-badge">推断</span>
+          <span class="mode-icon">🔍</span>
+          <h3>物质推断</h3>
+          <p>根据物质性质和实验现象推断物质名称，考验化学知识掌握程度</p>
+        </div>
+        <div class="mode-card" onclick="startQuiz('equation')">
+          <span class="mode-badge">进阶</span>
+          <span class="mode-icon">⚡</span>
+          <h3>方程式配平</h3>
+          <p>点击系数填入方程空格，使两边原子数相等</p>
+        </div>
+        <div class="mode-card" onclick="startQuiz('match')">
+          <span class="mode-badge">记忆</span>
+          <span class="mode-icon">🎴</span>
+          <h3>化合物配对</h3>
+          <p>翻开卡片，找化学式和对应名称的配对</p>
+        </div>
+      </div>
     </div>
   </div>
-  <div class="nav-tabs" id="navTabs">
-    <button class="nav-tab active" data-tab="play">🎮 游戏</button>
-    <button class="nav-tab" data-tab="ptable">📊 周期表</button>
-    <button class="nav-tab" data-tab="stats">📈 统计</button>
-    <button class="nav-tab" data-tab="achievements">🏆 成就</button>
-  </div>
-  <!-- 主游戏视图 -->
-  <div id="playView">
-    <div class="mode-grid" id="modeGrid"></div>
-    <div class="daily-challenge" id="dailyChallenge">
-      <h3>🎯 每日挑战</h3>
-      <p id="dcDesc"></p>
-      <p class="dc-reward">奖励: <span id="dcReward"></span> XP</p>
-      <button class="btn" onclick="startDailyChallenge()">开始挑战</button>
+
+  <!-- QUIZ -->
+  <div class="screen" id="screenQuiz">
+    <div class="quiz-header">
+      <div class="score-board">
+        <div class="score-chip">✅ <span class="val right" id="scoreRight">0</span></div>
+        <div class="score-chip">❌ <span class="val wrong" id="scoreWrong">0</span></div>
+        <div class="score-chip" id="questionCounter">第 1/10 题</div>
+        <span id="streakBadge" style="display:none;"></span>
+      </div>
+      <div class="top-actions">
+        <div id="timerWrap" style="display:none;">
+          <div class="countdown-ring">
+            <svg viewBox="0 0 52 52">
+              <circle class="bg" cx="26" cy="26" r="24"/>
+              <circle class="fg" id="countdownFg" cx="26" cy="26" r="24"/>
+            </svg>
+            <span class="countdown-num" id="countdownNum">10</span>
+          </div>
+        </div>
+        <button class="btn-sm" onclick="quitGame()">🏠 退出</button>
+      </div>
     </div>
-    <div class="game-area" id="gameArea"></div>
-  </div>
-  <!-- 周期表视图 -->
-  <div id="ptableView" style="display:none">
-    <div class="pt-search">
-      <input type="text" id="ptSearch" placeholder="搜索元素名称或符号..." oninput="filterPT()">
-      <button class="btn small secondary" onclick="resetPT()">重置</button>
+
+    <div class="progress-bar-wrap">
+      <div class="progress-bar-fill" id="progressBar"></div>
     </div>
-    <div class="pt-legend" id="ptLegend"></div>
-    <div class="periodic-table-wrap"><div class="pt-grid" id="ptGrid"></div></div>
+
+    <div class="question-card" id="questionCard">
+      <div class="question-tag" id="questionTag">选择题</div>
+      <div class="question-text" id="questionText">题目加载中...</div>
+      <div class="question-sub" id="questionSub"></div>
+      <div id="extraDisplay"></div>
+    </div>
+
+    <div id="answerFeedback"></div>
+    <div id="choicesGrid"></div>
+    <div id="quizActions" class="btn-row" style="margin-top:12px;"></div>
   </div>
-  <!-- 统计视图 -->
-  <div class="stats-page" id="statsView">
-    <div class="stats-grid" id="statsGrid"></div>
-    <div style="margin-top:12px">
-      <h3 style="font-size:0.9rem;color:var(--text2);margin-bottom:8px">📊 各模式准确率</h3>
-      <div id="modeAccuracy"></div>
+
+  <!-- RESULT -->
+  <div class="screen" id="screenResult">
+    <header style="padding-top: 20px;">
+      <h1>📊 答题报告</h1>
+    </header>
+    <div class="result-card">
+      <div class="result-emoji" id="resultEmoji">🏆</div>
+      <div class="result-title" id="resultTitle">太棒了！</div>
+      <div class="result-score" id="resultScore">0%</div>
+      <div class="result-breakdown">
+        <div class="result-stat">
+          <div class="num correct-color" id="resultCorrect">0</div>
+          <div class="label">答对</div>
+        </div>
+        <div class="result-stat">
+          <div class="num wrong-color" id="resultWrong">0</div>
+          <div class="label">答错</div>
+        </div>
+        <div class="result-stat">
+          <div class="num" id="resultTotal">0</div>
+          <div class="label">总计</div>
+        </div>
+      </div>
+      <p id="resultComment" style="color:var(--text-dim);font-size:0.9rem;line-height:1.6;"></p>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="startQuiz(lastMode)">🔄 再来一次</button>
+      <button class="btn btn-primary" onclick="goHome()">🏠 返回主页</button>
     </div>
   </div>
-  <!-- 成就视图 -->
-  <div id="achievementsView" style="display:none">
-    <div id="achievementsList"></div>
-  </div>
+
 </div>
-<div class="feedback-toast" id="feedbackToast"></div>
-<div class="element-popup" id="elementPopup"><div class="popup-content" id="popupContent"></div></div>
+
+<div class="toast" id="toast"></div>
+
 <script>
-// ── 工具函数 ──
-const $=id=>document.getElementById(id);
-function shuffle(a){for(let i=a.length-1;i>0;i--){let j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
-function randInt(min,max){return Math.floor(Math.random()*(max-min+1))+min}
-function pick(arr,n=1){let s=shuffle([...arr]);return n===1?s[0]:s.slice(0,n)}
-
-// ── 状态管理 ──
-let state={
-  xp:0,level:1,combo:0,maxCombo:0,difficulty:'medium',
-  currentMode:null,currentTab:'play',gameActive:false,
-  questionIndex:0,totalQuestions:10,score:0,correctCount:0,
-  timerSec:0,timerInterval:null,timedMode:false,
-  stats:{compound:{total:0,correct:0},equation:{total:0,correct:0},puzzle:{total:0,correct:0},symbol:{total:0,correct:0},elementmaster:{total:0,correct:0},reactionspeed:{total:0,correct:0},molecule:{total:0,correct:0}},
-  achievements:{},dailyDone:false
+// ─────────────────────────────────────────────
+//  ELEMENT DATA (初中常见元素 1-20号)
+// ─────────────────────────────────────────────
+const ELEM = {
+  H:{n:1,s:"H",name:"氢"},He:{n:2,s:"He",name:"氦"},
+  Li:{n:3,s:"Li",name:"锂"},Be:{n:4,s:"Be",name:"铍"},
+  B:{n:5,s:"B",name:"硼"},C:{n:6,s:"C",name:"碳"},
+  N:{n:7,s:"N",name:"氮"},O:{n:8,s:"O",name:"氧"},
+  F:{n:9,s:"F",name:"氟"},Ne:{n:10,s:"Ne",name:"氖"},
+  Na:{n:11,s:"Na",name:"钠"},Mg:{n:12,s:"Mg",name:"镁"},
+  Al:{n:13,s:"Al",name:"铝"},Si:{n:14,s:"Si",name:"硅"},
+  P:{n:15,s:"P",name:"磷"},S:{n:16,s:"S",name:"硫"},
+  Cl:{n:17,s:"Cl",name:"氯"},Ar:{n:18,s:"Ar",name:"氩"},
+  K:{n:19,s:"K",name:"钾"},Ca:{n:20,s:"Ca",name:"钙"},
+  Fe:{n:26,s:"Fe",name:"铁"},Cu:{n:29,s:"Cu",name:"铜"},
+  Zn:{n:30,s:"Zn",name:"锌"},Ag:{n:47,s:"Ag",name:"银"},
+  Ba:{n:56,s:"Ba",name:"钡"},Mn:{n:25,s:"Mn",name:"锰"},
+  Au:{n:79,s:"Au",name:"金"},Hg:{n:80,s:"Hg",name:"汞"},
 };
-function loadState(){try{let s=JSON.parse(localStorage.getItem('chemgame'));if(s){Object.assign(state,s);state.timerInterval=null;state.gameActive=false}}catch(e){}}
-function saveState(){let s={...state};s.timerInterval=null;s.gameActive=false;localStorage.setItem('chemgame',JSON.stringify(s))}
-function addXP(n){let mul=state.difficulty==='hard'?2:state.difficulty==='easy'?0.5:1;n=Math.round(n*mul);state.xp+=n;updateXPUI();saveState()}
-function xpForLevel(l){return Math.floor(100*Math.pow(l,1.5))}
-function updateXPUI(){$('xpNum').textContent=state.xp;let lvl=1;while(state.xp>=xpForLevel(lvl))lvl++;lvl--;if(lvl!==state.level){state.level=lvl;$('levelNum').textContent=lvl;showToast('🎉','升级! Lv.'+lvl,'correct')}$('levelNum').textContent=state.level;let lf=$('levelFill');if(lf){let cur=xpForLevel(lvl),nxt=xpForLevel(lvl+1),pct=Math.min(100,Math.round((state.xp-cur)/(nxt-cur)*100));lf.style.width=pct+'%'}}
-function updateCombo(correct){if(correct){state.combo++;if(state.combo>state.maxCombo)state.maxCombo=state.combo;$('comboNum').textContent=state.combo;if(state.combo>=3&&state.combo%3===0){$('comboBadge').textContent='🔥 x'+state.combo+'!';$('comboBadge').classList.add('show');setTimeout(()=>$('comboBadge').classList.remove('show'),1500)}}else{state.combo=0;$('comboNum').textContent='0'}}
-function showToast(icon,msg,type){let t=$('feedbackToast');t.textContent=icon+' '+msg;t.className='feedback-toast '+type+' show';setTimeout(()=>t.classList.remove('show'),1200)}
-function showScorePopup(x,y,text,color){let el=document.createElement('div');el.className='score-popup';el.textContent=text;el.style.cssText=`left:${x}px;top:${y}px;color:${color}`;document.body.appendChild(el);setTimeout(()=>el.remove(),1000)}
-function getDifficultyConfig(){let d=state.difficulty;return{questions:d==='easy'?8:d==='hard'?15:10,timePerQ:d==='easy'?20:d==='hard'?8:12,options:d==='easy'?3:4}}
+</script>
+<script src="chem-data-v2.js?v=20240420"></script>
+<script src="chem-puzzles-v2.js?v=20240420"></script>
+<script src="chem-equations-v2.js?v=20240420"></script>
+<script src="chem-symbols-v2.js?v=20240420"></script>
+<script>
 
-// ── 粒子背景 ──
-function initParticles(){let c=$('particles'),ctx=c.getContext('2d');c.width=window.innerWidth;c.height=window.innerHeight;let ps=[];for(let i=0;i<60;i++){ps.push({x:Math.random()*c.width,y:Math.random()*c.height,r:Math.random()*3+1,vx:(Math.random()-0.5)*0.5,vy:(Math.random()-0.5)*0.5-0.5,o:Math.random()*0.5+0.3})}function anim(){ctx.clearRect(0,0,c.width,c.height);for(let p of ps){p.x+=p.vx;p.y+=p.vy;if(p.x<0)p.x=c.width;if(p.x>c.width)p.x=0;if(p.y<0)p.y=c.height;if(p.y>c.height)p.y=0;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle=`rgba(6,182,212,${p.o})`;ctx.fill()}requestAnimationFrame(anim)}anim();window.addEventListener('resize',()=>{c.width=window.innerWidth;c.height=window.innerHeight})}
+const CAT_COLORS = {
+  '非金属':'#16a34a','稀有气体':'#7c3aed','碱金属':'#dc2626',
+  '碱土金属':'#ea580c','类金属':'#0891b2','贫金属':'#4b5563',
+  '过渡金属':'#ca8a04','卤素':'#db2777','镧系':'#0d9488','锕系':'#9333ea','未知':'#6b7280',
+};
+const CAT_BG = {
+  '非金属':'rgba(22,163,74,0.15)','稀有气体':'rgba(124,58,237,0.15)',
+  '碱金属':'rgba(220,38,38,0.15)','碱土金属':'rgba(234,88,12,0.15)',
+  '类金属':'rgba(8,145,178,0.15)','贫金属':'rgba(75,85,99,0.15)',
+  '过渡金属':'rgba(202,138,4,0.15)','卤素':'rgba(219,39,119,0.15)',
+  '镧系':'rgba(13,148,136,0.15)','锕系':'rgba(147,51,234,0.15)','未知':'rgba(107,114,128,0.15)',
+};
 
-// ── 导航 ──
-function switchTab(tab){state.currentTab=tab;['playView','ptableView','statsView','achievementsView'].forEach(id=>$(id).style.display='none');let map={play:'playView',ptable:'ptableView',stats:'statsView',achievements:'achievementsView'};$(map[tab]).style.display='block';document.querySelectorAll('.nav-tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));if(tab==='ptable')renderPT();if(tab==='stats')renderStats();if(tab==='achievements')renderAchievements()}
-$('navTabs').addEventListener('click',e=>{if(e.target.classList.contains('nav-tab'))switchTab(e.target.dataset.tab)});
+// ─────────────────────────────────────────────
+//  STATE
+// ─────────────────────────────────────────────
+let lastMode = 'match';
+let totalQuestions = 0;
+let timerInterval = null;
+let timerSeconds = 15;
+let timerLeft = 15;
+let answerLocked = false;
+let gameActive = false; // 防止退出后 toast/timer 回调继续弹出
+let scoreRight = 0;
+let scoreWrong = 0;
+let qIndex = 0;
+let questions = [];
+let streak = 0;
+let matchStartTime = 0; // 化合物配对开始时间（毫秒）
 
-// ── 难度选择 ──
-$('diffSelector').addEventListener('click',e=>{if(e.target.classList.contains('diff-btn')){document.querySelectorAll('.diff-btn').forEach(b=>b.classList.remove('active'));e.target.classList.add('active');state.difficulty=e.target.dataset.diff;saveState()}});
+// Match game state
+let matchState = { cards: [], flipped: [], matched: [], totalPairs: 0 };
 
-// ── 游戏模式 ──
-function initModes(){let modes=[
-  {id:'compound',icon:'🧪',name:'化合物匹配',desc:'看化学式选名称',new:false},
-  {id:'equation',icon:'⚖️',name:'方程式配平',desc:'配平化学方程式',new:false},
-  {id:'puzzle',icon:'🔍',name:'物质推断',desc:'根据描述推断物质',new:false},
-  {id:'symbol',icon:'🔤',name:'符号速记',desc:'看符号写元素名',new:false},
-  {id:'elementmaster',icon:'🧬',name:'元素大师',desc:'根据属性猜元素',new:true},
-  {id:'reactionspeed',icon:'⚡',name:'反应速度',desc:'限时快速答题',new:true},
-  {id:'molecule',icon:'🔬',name:'分子构建',desc:'选择原子构建分子',new:true},
-];
-let html='';modes.forEach(m=>{html+=`<div class="mode-card${m.new?' new-badge':''}" onclick="startGame('${m.id}')"><div class="mode-icon">${m.icon}</div><div class="mode-name">${m.name}</div><div class="mode-desc">${m.desc}</div></div>`});$('modeGrid').innerHTML=html}
+// Category rush state
+let catState = { round: 0, totalRounds: 0, timerId: null, timeLeft: 0, correctStreak: 0 };
 
-// ── 开始游戏 ──
-function startGame(modeId){if(state.gameActive)return;state.currentMode=modeId;state.gameActive=true;state.questionIndex=0;state.score=0;state.correctCount=0;state.combo=0;state.timedMode=(modeId==='reactionspeed');let cfg=getDifficultyConfig();state.totalQuestions=cfg.questions;state.timerSec=state.timedMode?cfg.timePerQ:0;let area=$('gameArea');area.style.display='block';area.classList.add('active');area.scrollIntoView({behavior:'smooth'});renderGameQuestion()}
-function stopGame(){state.gameActive=false;if(state.timerInterval){clearInterval(state.timerInterval);state.timerInterval=null}let area=$('gameArea');area.style.display='none';area.classList.remove('active')}
-function endGame(){let area=$('gameArea');let acc=state.totalQuestions>0?Math.round(state.correctCount/state.totalQuestions*100):0;let xpEarn=Math.round(state.score*2+state.maxCombo*5);addXP(xpEarn);checkAchievements();let mode=state.currentMode;if(state.stats[mode]){state.stats[mode].total+=state.totalQuestions;state.stats[mode].correct+=state.correctCount}saveState();let html=`<div class="result-screen"><div class="big-score">${state.score} 分</div><div class="xp-gain">+${xpEarn} XP</div><div class="result-stats"><div class="result-stat"><div class="num">${acc}%</div><div class="lbl">正确率</div></div><div class="result-stat"><div class="num">${state.correctCount}/${state.totalQuestions}</div><div class="lbl">正确/总数</div></div><div class="result-stat"><div class="num">🔥 ${state.maxCombo}</div><div class="lbl">最大连击</div></div></div><button class="btn" onclick="stopGame();initModes();switchTab('play')">返回</button> <button class="btn secondary" onclick="startGame(state.currentMode)">再来一局</button></div>`;area.innerHTML=html;area.style.display='block';state.gameActive=false;if(state.timerInterval){clearInterval(state.timerInterval);state.timerInterval=null}}
+// Symbol input state
+let symbolState = { round: 0, totalRounds: 0, timerId: null, timeLeft: 0, currentCompound: null };
 
-// ── 渲染题目 ──
-function renderGameQuestion(){if(state.questionIndex>=state.totalQuestions){endGame();return}let cfg=getDifficultyConfig();let area=$('gameArea');let mode=state.currentMode;let qData=generateQuestion(mode);let progressPct=Math.round(state.questionIndex/state.totalQuestions*100);let html=`<div class="game-header"><h2>${getModeName(mode)}</h2><span>${state.questionIndex+1}/${state.totalQuestions}</span>${state.timedMode?`<span class="timer" id="qtimer">⏱ ${state.timerSec}s</span>`:''}</div><div class="progress-bar"><div class="progress-fill" style="width:${progressPct}%"></div></div><div class="question-card" id="qcard">${qData.html}</div>`;area.innerHTML=html;if(state.timedMode){state.timerSec=cfg.timePerQ;updateTimer();state.timerInterval=setInterval(()=>{state.timerSec--;updateTimer();if(state.timerSec<=0){clearInterval(state.timerInterval);state.timerInterval=null;handleTimeout()}},1000)}}
-function updateTimer(){let t=$('qtimer');if(!t)return;t.textContent='⏱ '+state.timerSec+'s';if(state.timerSec<=5)t.classList.add('urgent');else t.classList.remove('urgent')}
-function handleTimeout(){state.combo=0;$('comboNum').textContent='0';state.questionIndex++;showToast('⏰','超时!','wrong');renderGameQuestion()}
-function getModeName(mode){let map={compound:'🧪 化合物匹配',equation:'⚖️ 方程式配平',puzzle:'🔍 物质推断',symbol:'🔤 符号速记',elementmaster:'🧬 元素大师',reactionspeed:'⚡ 反应速度',molecule:'🔬 分子构建'};return map[mode]||mode}
+// Table state
+let tableState = { shuffledOrder: [], currentIndex: 0, startTime: 0, errors: 0, revealed: [] };
 
-// ── 题目生成 ──
-function generateQuestion(mode){
-  let cfg=getDifficultyConfig();
-  if(mode==='compound'){
-    let correct=pick(COMPOUNDS);
-    let wrongs=pick(COMPOUNDS.filter(c=>c.n!==correct.n),cfg.options-1);
-    let opts=shuffle([correct,...wrongs]);
-    return {correct:correct.n,html:`<div class="q-text">这个化学式对应的名称是什么？</div><div class="q-formula">${correct.f}</div><div class="options-grid">${opts.map(o=>`<button class="opt-btn" onclick="answerQuestion('${esc(o.n)}','${esc(correct.n)}',this)">${o.n}</button>`).join('')}</div>`,type:'choice'};
+// ─────────────────────────────────────────────
+//  PARTICLES
+// ─────────────────────────────────────────────
+function spawnParticles() {
+  const c = document.getElementById('particles');
+  c.innerHTML = '';
+  const colors = ['#00e5ff','#7c3aed','#f43f5e','#fbbf24'];
+  for (let i = 0; i < 20; i++) {
+    const p = document.createElement('div');
+    p.className = 'particle';
+    const size = 3 + Math.random() * 6;
+    p.style.cssText = `width:${size}px;height:${size}px;left:${Math.random()*100}%;background:${colors[Math.floor(Math.random()*colors.length)]};animation-duration:${12+Math.random()*18}s;animation-delay:${Math.random()*12}s;`;
+    c.appendChild(p);
   }
-  if(mode==='equation'){
-    let eq=pick(EQUATIONS);
-    let lhs=eq.r.map((r,i)=>`<span class="sym">${eq.e[i]||''}${r}</span>`).join(' + ');
-    let rhs=eq.p.map((p,i)=>`<span class="sym">${eq.e[eq.r.length+i]||''}${p}</span>`).join(' + ');
-    let correctCoeff=eq.e.join(',');
-    let wrongs=[];for(let i=0;i<cfg.options-1;i++){let w=[...eq.e];for(let j=0;j<w.length;j++)w[j]=Math.max(1,w[j]+randInt(-2,2));if(w.join(',')!==correctCoeff)wrongs.push(w.join(','))}
-    let opts=shuffle([correctCoeff,...wrongs.slice(0,cfg.options-1)]);
-    return {correct:correctCoeff,html:`<div class="q-text">配平: ${eq.h}</div><div class="q-formula">${lhs} → ${rhs}</div><div class="options-grid">${opts.map(o=>`<button class="opt-btn" onclick="answerQuestion('${esc(o)}','${esc(correctCoeff)}',this)">${o}</button>`).join('')}</div>`,type:'choice'};
-  }
-  if(mode==='puzzle'){
-    let p=pick(PUZZLES);
-    let opts=shuffle([p.correct,...pick(p.opts.filter(o=>o!==p.correct),cfg.options-1)]);
-    return {correct:p.correct,html:`<div class="q-text">${p.desc}</div><div class="options-grid">${opts.map(o=>`<button class="opt-btn" onclick="answerQuestion('${esc(o)}','${esc(p.correct)}',this)">${o}</button>`).join('')}</div>`,type:'choice'};
-  }
-  if(mode==='symbol'){
-    let el=pick(ALL_EL);
-    let wrongs=pick(ALL_EL.filter(e=>e.name!==el.name),cfg.options-1);
-    let opts=shuffle([el,...wrongs]);
-    return {correct:el.name,html:`<div class="q-text">这个化学符号对应的元素名称是什么？</div><div class="q-formula">${el.s}</div><div class="options-grid">${opts.map(o=>`<button class="opt-btn" onclick="answerQuestion('${esc(o.name)}','${esc(el.name)}',this)">${o.name}</button>`).join('')}</div>`,type:'choice'};
-  }
-  if(mode==='elementmaster'){
-    let keys=Object.keys(ELEMENT_PROPS);
-    let sym=pick(keys);
-    let el=ALL_EL.find(e=>e.s===sym);
-    let ep=ELEMENT_PROPS[sym];
-    let wrongs=pick(keys.filter(k=>k!==sym),cfg.options-1);
-    let wrongNames=wrongs.map(w=>{let e=ALL_EL.find(x=>x.s===w);return e?e.name:w});
-    let opts=shuffle([el.name,...wrongNames]);
-    let qType=randInt(0,4);
-    let qText='';
-    if(qType===0)qText=`哪种元素的原子序数是 <b>${el.n}</b>？`;
-    else if(qType===1)qText=`哪种元素的相对原子质量约为 <b>${ep.mass}</b>？`;
-    else if(qType===2)qText=`哪种元素属于 <b>${el.cat}</b>，电子排布为 <b>${ep.ec}</b>？`;
-    else if(qType===3)qText=`哪种元素的电负性约为 <b>${ep.en}</b>，常温下为<b>${ep.phase}</b>？`;
-    else qText=`哪种元素的主要用途是：<b>${ep.use}</b>？`;
-    return {correct:el.name,html:`<div class="q-text">🔬 ${qText}</div><div class="options-grid">${opts.map(o=>`<button class="opt-btn" onclick="answerQuestion('${esc(o)}','${esc(el.name)}',this)">${o}</button>`).join('')}</div>`,type:'choice'};
-  }
-  if(mode==='reactionspeed'){
-    let types=['compound','equation','puzzle','symbol'];
-    let t=types[randInt(0,3)];
-    if(t==='compound'){let c=pick(COMPOUNDS);let w=pick(COMPOUNDS.filter(x=>x.n!==c.n),2);let opts=shuffle([c.n,...w.map(x=>x.n)]);return {correct:c.n,html:`<div class="q-text">⚡ <span class="q-formula">${c.f}</span> 的名称是？</div><div class="options-grid">${opts.map(o=>`<button class="opt-btn" onclick="answerQuestion('${esc(o)}','${esc(c.n)}',this)">${o}</button>`).join('')}</div>`,type:'choice'}}
-    if(t==='symbol'){let el=pick(ALL_EL);let w=pick(ALL_EL.filter(e=>e.name!==el.name),2);let opts=shuffle([el.name,...w.map(x=>x.name)]);return {correct:el.name,html:`<div class="q-text">⚡ <span class="q-formula">${el.s}</span> 是什么元素？</div><div class="options-grid">${opts.map(o=>`<button class="opt-btn" onclick="answerQuestion('${esc(o)}','${esc(el.name)}',this)">${o}</button>`).join('')}</div>`,type:'choice'}}
-    if(t==='puzzle'){let p=pick(PUZZLES);let opts=shuffle([p.correct,...pick(p.opts.filter(o=>o!==p.correct),2)]);return {correct:p.correct,html:`<div class="q-text">⚡ ${p.desc}</div><div class="options-grid">${opts.map(o=>`<button class="opt-btn" onclick="answerQuestion('${esc(o)}','${esc(p.correct)}',this)">${o}</button>`).join('')}</div>`,type:'choice'}}
-    let eq=pick(EQUATIONS);let lhs=eq.r.map((r,i)=>`<span class="sym">${eq.e[i]||''}${r}</span>`).join(' + ');let rhs=eq.p.map((p,i)=>`<span class="sym">${eq.e[eq.r.length+i]||''}${p}</span>`).join(' + ');let cc=eq.e.join(',');let wrongs=[];for(let i=0;i<3;i++){let w=[...eq.e];for(let j=0;j<w.length;j++)w[j]=Math.max(1,w[j]+randInt(-2,2));if(w.join(',')!==cc)wrongs.push(w.join(','))}let opts=shuffle([cc,...wrongs.slice(0,2)]);return {correct:cc,html:`<div class="q-text">⚡ 配平: ${eq.h}</div><div class="q-formula">${lhs} → ${rhs}</div><div class="options-grid">${opts.map(o=>`<button class="opt-btn" onclick="answerQuestion('${esc(o)}','${esc(cc)}',this)">${o}</button>`).join('')}</div>`,type:'choice'};
-  }
-  if(mode==='molecule'){
-    let molecules=[{name:'水 H₂O',atoms:[{s:'H',n:2},{s:'O',n:1}],desc:'2个氢原子 + 1个氧原子'},
-    {name:'二氧化碳 CO₂',atoms:[{s:'C',n:1},{s:'O',n:2}],desc:'1个碳原子 + 2个氧原子'},
-    {name:'硫酸 H₂SO₄',atoms:[{s:'H',n:2},{s:'S',n:1},{s:'O',n:4}],desc:'2个氢 + 1个硫 + 4个氧'},
-    {name:'碳酸钠 Na₂CO₃',atoms:[{s:'Na',n:2},{s:'C',n:1},{s:'O',n:3}],desc:'2个钠 + 1个碳 + 3个氧'},
-    {name:'氯化钠 NaCl',atoms:[{s:'Na',n:1},{s:'Cl',n:1}],desc:'1个钠原子 + 1个氯原子'},
-    {name:'氨 NH₃',atoms:[{s:'N',n:1},{s:'H',n:3}],desc:'1个氮原子 + 3个氢原子'},
-    {name:'甲烷 CH₄',atoms:[{s:'C',n:1},{s:'H',n:4}],desc:'1个碳原子 + 4个氢原子'},
-    {name:'氢氧化钠 NaOH',atoms:[{s:'Na',n:1},{s:'O',n:1},{s:'H',n:1}],desc:'1个钠 + 1个氧 + 1个氢'},
-    {name:'硝酸 HNO₃',atoms:[{s:'H',n:1},{s:'N',n:1},{s:'O',n:3}],desc:'1个氢 + 1个氮 + 3个氧'},
-    {name:'乙醇 C₂H₅OH',atoms:[{s:'C',n:2},{s:'H',n:6},{s:'O',n:1}],desc:'2个碳 + 6个氢 + 1个氧'},
-    ];
-    let mol=pick(molecules);
-    let atomList=mol.atoms.map(a=>`${a.n}×${a.s} (${ALL_EL.find(e=>e.s===a.s)?.name||a.s})`).join(' · ');
-    let wrongs=pick(molecules.filter(m=>m.name!==mol.name),cfg.options-1);
-    let opts=shuffle([mol.name,...wrongs.map(m=>m.name)]);
-    return {correct:mol.name,html:`<div class="q-text">🔬 构建这个分子：<b>${mol.desc}</b></div><div style="font-size:0.85rem;color:var(--text2);margin:6px 0">原子组成: ${atomList}</div><div class="options-grid">${opts.map(o=>`<button class="opt-btn" onclick="answerQuestion('${esc(o)}','${esc(mol.name)}',this)">${o}</button>`).join('')}</div>`,type:'choice'};
-  }
-  return {correct:'',html:'<div class="q-text">题目加载失败</div>',type:'choice'};
 }
-function esc(s){return (s||'').replace(/'/g,"\\'").replace(/"/g,'&quot;')}
+spawnParticles();
 
-// ── 答题处理 ──
-function answerQuestion(chosen,correct,btnEl){
-  if(!state.gameActive)return;
-  if(state.timerInterval){clearInterval(state.timerInterval);state.timerInterval=null}
-  let isCorrect=chosen===correct;
-  let card=$('qcard');if(!card)return;
-  let allBtns=card.querySelectorAll('.opt-btn');
-  allBtns.forEach(b=>{b.disabled=true;if(b.textContent.trim()===correct)b.classList.add('correct');if(b===btnEl&&!isCorrect)b.classList.add('wrong')});
-  if(isCorrect){
-    state.score+=10+state.combo*2;state.correctCount++;card.classList.add('correct');
-    showToast('✅','正确!','correct');
-    if(state.combo>=5)showScorePopup(window.innerWidth/2,window.innerHeight/2,'+'+state.combo*2,'#fbbf24');
-  }else{card.classList.add('wrong');showToast('❌','错误','wrong')}
-  updateCombo(isCorrect);
-  setTimeout(()=>{state.questionIndex++;renderGameQuestion()},isCorrect?600:1200);
+// ─────────────────────────────────────────────
+//  UTILITIES
+// ─────────────────────────────────────────────
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function randInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+function pick(arr, n) { return shuffle([...arr]).slice(0, n); }
+
+function fmtEl(formula) {
+  return formula
+    .replace(/₀/g, '<sub>0</sub>')
+    .replace(/₁/g, '<sub>1</sub>')
+    .replace(/₂/g, '<sub>2</sub>')
+    .replace(/₃/g, '<sub>3</sub>')
+    .replace(/₄/g, '<sub>4</sub>')
+    .replace(/₅/g, '<sub>5</sub>')
+    .replace(/₆/g, '<sub>6</sub>')
+    .replace(/₇/g, '<sub>7</sub>')
+    .replace(/₈/g, '<sub>8</sub>')
+    .replace(/₉/g, '<sub>9</sub>');
 }
 
-// ── 周期表 ──
-let catColors={'碱金属':'#f97316','碱土金属':'#eab308','过渡金属':'#ef4444','贫金属':'#22c55e','类金属':'#06b6d4','非金属':'#8b5cf6','卤素':'#ec4899','稀有气体':'#6366f1','镧系':'#14b8a6','锕系':'#f43f5e','未知':'#64748b'};
-function renderPT(){
-  let grid=$('ptGrid');grid.innerHTML='';
-  for(let row=1;row<=10;row++){for(let col=1;col<=18;col++){let el=ALL_EL.find(e=>e.row===row&&e.col===col);if(el){let color=catColors[el.cat]||'#64748b';grid.innerHTML+=`<div class="pt-el" style="background:${color}22;border-color:${color}44" data-sym="${el.s}" onclick="showElementDetail('${el.s}')"><span class="num">${el.n}</span><span class="sym">${el.s}</span></div>`}else{grid.innerHTML+='<div class="pt-el" style="visibility:hidden"></div>'}}}
-  let legend=$('ptLegend');legend.innerHTML='';Object.entries(catColors).forEach(([cat,color])=>{legend.innerHTML+=`<span style="background:${color}22;color:${color}">${cat}</span>`})}
-}
-function showElementDetail(sym){
-  let el=ALL_EL.find(e=>e.s===sym);if(!el)return;
-  let ep=ELEMENT_PROPS[sym]||{};
-  let html=`<button class="popup-close" onclick="closeElementPopup()">✕</button><div class="popup-el-sym" style="color:${catColors[el.cat]||'#64748b'}">${el.s}</div><div class="popup-el-name">${el.name} · 原子序数 ${el.n}</div><div class="popup-props">
-    <div class="popup-prop"><div class="prop-lbl">分类</div><div class="prop-val">${el.cat}</div></div>
-    <div class="popup-prop"><div class="prop-lbl">原子量</div><div class="prop-val">${ep.mass||'—'}</div></div>
-    <div class="popup-prop"><div class="prop-lbl">电负性</div><div class="prop-val">${ep.en||'—'}</div></div>
-    <div class="popup-prop"><div class="prop-lbl">电子排布</div><div class="prop-val" style="font-size:0.7rem">${ep.ec||'—'}</div></div>
-    <div class="popup-prop"><div class="prop-lbl">常见氧化态</div><div class="prop-val">${ep.ox?ep.ox.join(', '):'—'}</div></div>
-    <div class="popup-prop"><div class="prop-lbl">常温状态</div><div class="prop-val">${ep.phase||'—'}</div></div>
-    <div class="popup-prop"><div class="prop-lbl">族/周期</div><div class="prop-val">${ep.group||'—'} / ${ep.period||'—'}</div></div>
-    <div class="popup-prop"><div class="prop-lbl">发现年份</div><div class="prop-val">${ep.year||'—'}</div></div>
-  </div><div class="popup-prop" style="margin-top:8px"><div class="prop-lbl">主要用途</div><div class="prop-val" style="font-size:0.8rem">${ep.use||'—'}</div></div>`;
-  $('popupContent').innerHTML=html;$('elementPopup').classList.add('show')
-}
-function closeElementPopup(){$('elementPopup').classList.remove('show')}
-$('elementPopup').addEventListener('click',e=>{if(e.target===$('elementPopup'))closeElementPopup()});
-function filterPT(){let q=$('ptSearch').value.toLowerCase();document.querySelectorAll('.pt-el').forEach(el=>{if(!el.dataset.sym)return;let e=ALL_EL.find(x=>x.s===el.dataset.sym);if(!e)return;let match=e.name.includes(q)||e.s.toLowerCase().includes(q)||String(e.n).includes(q);el.classList.toggle('dim',!match);el.classList.toggle('highlight',match&&q.length>0)})}
-function resetPT(){$('ptSearch').value='';document.querySelectorAll('.pt-el').forEach(el=>{el.classList.remove('dim','highlight')})}
-
-// ── 统计 ──
-function renderStats(){
-  let totalQ=0,totalC=0;Object.values(state.stats).forEach(s=>{totalQ+=s.total;totalC+=s.correct});
-  let acc=totalQ>0?Math.round(totalC/totalQ*100):0;
-  let html=`<div class="stats-card"><h3>📊 总正确率</h3><div class="stat-val">${acc}%</div><div class="stat-sub">${totalC}/${totalQ} 题</div></div>
-    <div class="stats-card"><h3>⭐ 等级</h3><div class="stat-val">Lv.${state.level}</div><div class="stat-sub">${state.xp} XP</div><div class="level-bar"><div class="level-fill" id="levelFill" style="width:${Math.min(100,Math.round((state.xp-xpForLevel(state.level))/(xpForLevel(state.level+1)-xpForLevel(state.level))*100))}%"></div></div></div>
-    <div class="stats-card"><h3>🔥 最佳连击</h3><div class="stat-val">${state.maxCombo}</div><div class="stat-sub">连续正确</div></div>
-    <div class="stats-card"><h3>🎮 总游戏数</h3><div class="stat-val">${Object.values(state.stats).reduce((a,s)=>a+(s.total>0?1:0),0)}</div><div class="stat-sub">种模式</div></div>`;
-  $('statsGrid').innerHTML=html;
-  let modeNames={compound:'化合物匹配',equation:'方程式配平',puzzle:'物质推断',symbol:'符号速记',elementmaster:'元素大师',reactionspeed:'反应速度',molecule:'分子构建'};
-  let accHtml='';Object.entries(modeNames).forEach(([k,v])=>{let s=state.stats[k]||{total:0,correct:0};let a=s.total>0?Math.round(s.correct/s.total*100):0;accHtml+=`<div class="stats-card"><h3>${v}</h3><div class="stat-val">${a}%</div><div class="stat-sub">${s.correct}/${s.total}</div></div>`});
-  $('modeAccuracy').innerHTML=`<div class="stats-grid">${accHtml}</div>`
+function fmtElText(formula) {
+  return formula.replace(/₀/g,'0').replace(/₁/g,'1').replace(/₂/g,'2')
+    .replace(/₃/g,'3').replace(/₄/g,'4').replace(/₅/g,'5').replace(/₆/g,'6')
+    .replace(/₇/g,'7').replace(/₈/g,'8').replace(/₉/g,'9');
 }
 
-// ── 成就 ──
-let ACHIEVEMENTS=[
-  {id:'first_win',name:'初次胜利',desc:'首次完成一局游戏',icon:'🎉',check:()=>Object.values(state.stats).some(s=>s.total>0)},
-  {id:'combo5',name:'连击大师',desc:'达到5连击',icon:'🔥',check:()=>state.maxCombo>=5},
-  {id:'combo10',name:'连击之王',desc:'达到10连击',icon:'💥',check:()=>state.maxCombo>=10},
-  {id:'score100',name:'百分达人',desc:'单局得分超过100',icon:'💯',check:()=>state.score>=100},
-  {id:'perfect',name:'完美主义',desc:'一局全部正确',icon:'🌟',check:()=>state.totalQuestions>0&&state.correctCount===state.totalQuestions},
-  {id:'level5',name:'成长之路',desc:'达到5级',icon:'📈',check:()=>state.level>=5},
-  {id:'level10',name:'化学专家',desc:'达到10级',icon:'🏆',check:()=>state.level>=10},
-  {id:'all_modes',name:'全能选手',desc:'在所有7种模式中都玩过',icon:'🎯',check:()=>{let modes=['compound','equation','puzzle','symbol','elementmaster','reactionspeed','molecule'];return modes.every(m=>(state.stats[m]||{total:0}).total>0)}},
-  {id:'xp1000',name:'经验丰富',desc:'累计获得1000 XP',icon:'✨',check:()=>state.xp>=1000},
-  {id:'daily7',name:'每日打卡',desc:'完成每日挑战',icon:'📅',check:()=>state.dailyDone},
-];
-function checkAchievements(){ACHIEVEMENTS.forEach(a=>{if(a.check()&&!state.achievements[a.id]){state.achievements[a.id]=true;showToast('🏆','解锁成就: '+a.name,'correct');saveState()}})}
-function renderAchievements(){
-  let html='';ACHIEVEMENTS.forEach(a=>{let unlocked=state.achievements[a.id];html+=`<div class="achievement${unlocked?'':' locked'}"><div class="ach-icon">${unlocked?a.icon:'🔒'}</div><div class="ach-info"><div class="ach-name">${a.name}</div><div class="ach-desc">${a.desc}</div></div></div>`});
-  $('achievementsList').innerHTML=html
+function normalizeFormula(raw) {
+  return fmtElText(raw).replace(/\s/g,'').toUpperCase();
 }
 
-// ── 每日挑战 ──
-function updateDaily(){
-  let today=new Date().toDateString();
-  let dcDesc='完成10道混合化学题';
-  let dcReward=150;
-  $('dcDesc').textContent=dcDesc;$('dcReward').textContent=dcReward;
-  let stored=localStorage.getItem('chemgame_daily');
-  if(stored===today){$('dailyChallenge').style.opacity='0.6';$('dailyChallenge').querySelector('.btn').textContent='今日已完成 ✓';$('dailyChallenge').querySelector('.btn').disabled=true}
-}
-function startDailyChallenge(){
-  let today=new Date().toDateString();
-  let stored=localStorage.getItem('chemgame_daily');
-  if(stored===today)return;
-  localStorage.setItem('chemgame_daily',today);
-  state.dailyDone=true;state.currentMode='reactionspeed';state.gameActive=true;state.questionIndex=0;state.totalQuestions=10;state.score=0;state.correctCount=0;state.combo=0;state.timedMode=true;state.timerSec=12;
-  let area=$('gameArea');area.style.display='block';area.classList.add('active');area.scrollIntoView({behavior:'smooth'});renderGameQuestion();
-  addXP(150);saveState();checkAchievements();updateDaily()
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
 }
 
-// ── 初始化 ──
-function init(){
-  loadState();
-  document.querySelectorAll('.diff-btn').forEach(b=>{b.classList.toggle('active',b.dataset.diff===state.difficulty)});
-  $('levelNum').textContent=state.level;$('xpNum').textContent=state.xp;$('comboNum').textContent='0';
-  initParticles();initModes();updateDaily();updateXPUI();renderPT();
+function goHome() {
+  clearAllTimers();
+  hideTimer();
+  gameActive = false;
+  showScreen('screenHome');
 }
-init();
+
+function quitGame() {
+  clearAllTimers();
+  hideTimer();
+  gameActive = false;
+  showScreen('screenResult');
+  const modeNames = {match:'化合物配对',equation:'方程式配平',puzzle:'物质推断',symbol:'符号速记',table:'周期表挑战'};
+  document.getElementById('resultEmoji').textContent = '🏠';
+  document.getElementById('resultTitle').textContent = '已退出游戏';
+  document.getElementById('resultScore').textContent = '—';
+  document.getElementById('resultCorrect').textContent = scoreRight;
+  document.getElementById('resultWrong').textContent = scoreWrong;
+  document.getElementById('resultTotal').textContent = totalQuestions;
+  document.getElementById('resultComment').textContent = `在 ${modeNames[lastMode] || lastMode} 中答对了 ${scoreRight} 题。`;
+}
+
+function clearAllTimers() {
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  if (catState.timerId) { clearTimeout(catState.timerId); catState.timerId = null; }
+  if (symbolState.timerId) { clearTimeout(symbolState.timerId); symbolState.timerId = null; }
+  if (puzzState.timerId) { clearTimeout(puzzState.timerId); puzzState.timerId = null; }
+}
+
+function showToast(msg, type = '') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `toast ${type} show`;
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+function updateScoreboard() {
+  document.getElementById('scoreRight').textContent = scoreRight;
+  document.getElementById('scoreWrong').textContent = scoreWrong;
+}
+
+function updateStreak(s) {
+  streak = s;
+  const badge = document.getElementById('streakBadge');
+  if (streak >= 2) {
+    badge.style.display = 'inline-flex';
+    badge.innerHTML = `🔥 ${streak}连`;
+    badge.className = 'streak-badge pop';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+// Timer
+function startTimer(seconds, onTimeout) {
+  if (timerInterval) clearInterval(timerInterval);
+  timerSeconds = seconds; timerLeft = seconds;
+  const fg = document.getElementById('countdownFg');
+  const num = document.getElementById('countdownNum');
+  document.getElementById('timerWrap').style.display = 'block';
+  const circ = 2 * Math.PI * 24;
+  fg.style.strokeDasharray = circ;
+  fg.style.strokeDashoffset = 0;
+  fg.className = 'fg';
+  timerInterval = setInterval(() => {
+    timerLeft--;
+    num.textContent = timerLeft;
+    fg.style.strokeDashoffset = circ * (1 - timerLeft / timerSeconds);
+    if (timerLeft <= 3) fg.className = 'fg danger';
+    else if (timerLeft <= 5) fg.className = 'fg warning';
+    if (timerLeft <= 0) { clearInterval(timerInterval); timerInterval = null; onTimeout(); }
+  }, 1000);
+}
+
+function hideTimer() {
+  clearAllTimers();
+  if (window.timerId) { clearTimeout(window.timerId); window.timerId = null; }
+  document.getElementById('timerWrap').style.display = 'none';
+}
+
+// ─────────────────────────────────────────────
+//  START QUIZ
+// ─────────────────────────────────────────────
+function startQuiz(mode) {
+  lastMode = mode;
+  scoreRight = 0; scoreWrong = 0; qIndex = 0;
+  answerLocked = false; streak = 0;
+  gameActive = true;
+  updateScoreboard();
+  updateStreak(0);
+  hideTimer();
+  document.getElementById('answerFeedback').innerHTML = '';
+  document.getElementById('quizActions').innerHTML = '';
+  document.getElementById('extraDisplay').innerHTML = '';
+  document.getElementById('streakBadge').style.display = 'none';
+
+  if (mode === 'match') {
+    document.getElementById('scoreWrong').parentElement.style.display = 'none';
+  } else {
+    document.getElementById('scoreWrong').parentElement.style.display = '';
+  }
+
+  if (mode === 'match') startMatchGame();
+  else if (mode === 'equation') startEquationGame();
+  else if (mode === 'puzzle') startPuzzleGame();
+  else if (mode === 'symbol') startSymbolGame();
+}
+
+// ═══════════════════════════════════════════════
+//  MODE 1: COMPOUND MATCH (记忆配对)
+// ═══════════════════════════════════════════════
+function startMatchGame() {
+  // 8 pairs = 16 cards (4×4 grid), random compounds each game
+  const numPairs = 8;
+  const selected = pick(COMPOUNDS, numPairs); // pick() already shuffles
+  // Each pair: one card shows formula, one shows name (in random order)
+  let cards = [];
+  selected.forEach((c, i) => {
+    cards.push({ id: i*2, pairId: i, content: c.f, display: fmtEl(c.f), type: 'formula', answer: c.n, label: c.n });
+    cards.push({ id: i*2+1, pairId: i, content: c.n, display: c.n, type: 'name', answer: c.n, label: c.n });
+  });
+  matchState = { cards: shuffle(cards), flipped: [], matched: [], totalPairs: numPairs };
+  matchStartTime = 0; // 游戏计时从预览动画结束后开始
+
+  showScreen('screenQuiz');
+  document.getElementById('questionTag').textContent = '化合物配对';
+  document.getElementById('questionText').textContent = `找出 ${numPairs} 组化学式与名称的配对！`;
+  document.getElementById('questionSub').textContent = '点击两张卡片，翻到相同配对即消除';
+  document.getElementById('questionCounter').textContent = `已配对: 0 / ${numPairs}`;
+  document.getElementById('progressBar').style.width = '0%';
+  renderMatchGrid();
+
+  // 开局预览动画：逐张翻开 → 等2秒 → 全部翻回背面
+  setTimeout(() => {
+    const allCards = document.querySelectorAll('.compound-card');
+    allCards.forEach(el => el.style.pointerEvents = 'none');
+
+    allCards.forEach((el, i) => {
+      setTimeout(() => {
+        el.classList.add('preview-flipped');
+      }, i * 300);
+    });
+
+    const lastCardFlipStart = (allCards.length - 1) * 300;
+    setTimeout(() => {
+      allCards.forEach(el => el.classList.remove('preview-flipped'));
+      setTimeout(() => {
+        matchStartTime = Date.now();
+        allCards.forEach(el => el.style.pointerEvents = '');
+      }, 100);
+    }, lastCardFlipStart + 2000);
+  }, 100);
+}
+
+function renderMatchGrid() {
+  const grid = document.getElementById('choicesGrid');
+  grid.className = 'choices-grid';
+  grid.innerHTML = '';
+  // Use compound-grid layout
+  grid.className = 'compound-grid';
+  grid.style.gridTemplateColumns = 'repeat(4, 1fr)';
+
+  matchState.cards.forEach((card, idx) => {
+    const el = document.createElement('div');
+    el.className = 'compound-card';
+    el.dataset.idx = idx;
+    const isFlipped = matchState.flipped.includes(card.id) || matchState.matched.includes(card.pairId);
+    const isPreview = false;
+
+    el.innerHTML = `
+      <div class="compound-card-inner">
+        <div class="compound-card-face compound-card-front">
+          <div class="c-formula" style="color:var(--text-dim);font-size:1.5rem;">?</div>
+          <div class="c-name">点击翻开</div>
+        </div>
+        <div class="compound-card-face compound-card-back">
+          ${card.type === 'formula'
+            ? `<div class="c-formula">${card.display}</div><div class="c-name">${card.content}</div>`
+            : `<div class="c-formula" style="color:var(--accent2);font-size:0.9rem;">${card.content}</div>`
+          }
+        </div>
+      </div>
+    `;
+
+    if (isFlipped) el.classList.add('flipped');
+    el.onclick = () => handleMatchClick(idx);
+    grid.appendChild(el);
+  });
+
+  document.getElementById('quizActions').innerHTML = `
+    <button class="btn btn-secondary" onclick="quitGame()">🏠 退出</button>
+  `;
+}
+
+function handleMatchClick(idx) {
+  if (answerLocked) return;
+  const card = matchState.cards[idx];
+  if (matchState.flipped.includes(card.id) || matchState.matched.includes(card.pairId)) return;
+  if (matchState.flipped.length >= 2) return;
+
+  matchState.flipped.push(card.id);
+
+  // Reveal card - just add flipped class, CSS handles the 3D flip
+  const cardEls = document.querySelectorAll('.compound-card');
+  const el = cardEls[idx];
+  el.classList.add('flipped');
+
+  if (matchState.flipped.length === 2) {
+    answerLocked = true;
+    const [id1, id2] = matchState.flipped;
+    const c1 = matchState.cards.find(c => c.id === id1);
+    const c2 = matchState.cards.find(c => c.id === id2);
+
+    if (c1.pairId === c2.pairId && c1.type !== c2.type) {
+      // Match!
+      setTimeout(() => {
+        matchState.matched.push(c1.pairId);
+        matchState.flipped = [];
+        const cardEls2 = document.querySelectorAll('.compound-card');
+        matchState.cards.forEach((c, i) => {
+          if (c.pairId === c1.pairId) cardEls2[i].classList.add('matched');
+        });
+        scoreRight++;
+        updateScoreboard();
+        updateStreak(streak + 1);
+        showToast(`✅ 配对成功！`, 'success');
+        document.getElementById('questionCounter').textContent = `已配对: ${matchState.matched.length} / ${matchState.totalPairs}`;
+        document.getElementById('progressBar').style.width = `${(matchState.matched.length / matchState.totalPairs) * 100}%`;
+        answerLocked = false;
+
+        if (matchState.matched.length >= matchState.totalPairs) {
+          setTimeout(() => showResult(), 600);
+        }
+      }, 400);
+    } else {
+      // No match - 等待足够时间让两张牌都翻完再翻回
+      setTimeout(() => {
+        matchState.flipped.forEach(fid => {
+          const fi = matchState.cards.findIndex(c => c.id === fid);
+          const fel = cardEls[fi];
+          fel.classList.remove('flipped');
+        });
+        matchState.flipped = [];
+        scoreWrong++;
+        updateScoreboard();
+        updateStreak(0);
+        answerLocked = false;
+      }, 1200);
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  MODE 2: EQUATION BALANCE (方程式配平)
+// ═══════════════════════════════════════════════
+let eqState = { questions: [], current: 0, total: 0, userCoeffs: [], selectedBlank: -1, selectedCoef: null };
+
+function startEquationGame() {
+  const numQs = 10;
+  eqState.questions = pick(EQUATIONS, numQs);
+  eqState.current = 0;
+  eqState.total = numQs;
+  showScreen('screenQuiz');
+  renderEquationQuestion();
+}
+
+function renderEquationQuestion() {
+  answerLocked = false;
+  eqState.selectedBlank = -1;
+  eqState.selectedCoef = null;
+  eqState.userCoeffs = eqState.questions[eqState.current].e.map(v => null);
+
+  const eq = eqState.questions[eqState.current];
+  const totalParts = eq.r.length + eq.p.length;
+
+  document.getElementById('questionTag').textContent = '方程式配平';
+  document.getElementById('questionText').textContent = eq.h;
+  document.getElementById('questionSub').textContent = '请在每个空格中点击正确的系数，使方程式配平';
+  document.getElementById('questionCounter').textContent = `第 ${eqState.current + 1}/${eqState.total} 题`;
+  document.getElementById('progressBar').style.width = `${(eqState.current / eqState.total) * 100}%`;
+  document.getElementById('answerFeedback').innerHTML = '';
+
+  // Build equation display
+  let eqHTML = '<div class="equation-display"><div class="eq-row">';
+  eq.r.forEach((sp, i) => {
+    const blankIdx = i;
+    eqHTML += `<span class="eq-blank" id="blank${blankIdx}" onclick="selectBlank(${blankIdx})">_</span>`;
+    eqHTML += `<span class="eq-species">${fmtEl(sp)}</span>`;
+    if (i < eq.r.length - 1) eqHTML += '<span class="eq-plus">+</span>';
+  });
+  eqHTML += '<span class="eq-arrow">→</span>';
+  eq.p.forEach((sp, i) => {
+    const blankIdx = eq.r.length + i;
+    eqHTML += `<span class="eq-blank" id="blank${blankIdx}" onclick="selectBlank(${blankIdx})">_</span>`;
+    eqHTML += `<span class="eq-species">${fmtEl(sp)}</span>`;
+    if (i < eq.p.length - 1) eqHTML += '<span class="eq-plus">+</span>';
+  });
+  eqHTML += '</div></div>';
+
+  // Coefficient options: 1-9 (multiple of the real coefficients)
+  const uniqueCoeffs = [...new Set(eq.e)];
+  const distractors = [1,2,3,4,5,6,7,8].filter(d => !uniqueCoeffs.includes(d));
+  const options = [...uniqueCoeffs, ...shuffle(distractors)].slice(0, Math.max(6, uniqueCoeffs.length));
+
+  document.getElementById('extraDisplay').innerHTML = eqHTML;
+
+  const grid = document.getElementById('choicesGrid');
+  grid.className = 'coef-options';
+  grid.innerHTML = '';
+  options.forEach(coef => {
+    const btn = document.createElement('button');
+    btn.className = 'coef-btn';
+    btn.textContent = coef;
+    btn.dataset.coef = coef;
+    btn.onclick = () => selectCoef(coef, btn);
+    grid.appendChild(btn);
+  });
+
+  document.getElementById('quizActions').innerHTML = `
+    <button class="btn btn-secondary" onclick="quitGame()">🏠 退出</button>
+    <button class="btn btn-primary" id="eqSubmitBtn" onclick="submitEquation()" disabled>✅ 确认答案</button>
+  `;
+}
+
+function selectBlank(idx) {
+  if (answerLocked) return;
+  document.querySelectorAll('.eq-blank').forEach(b => b.style.borderColor = '');
+  const blank = document.getElementById(`blank${idx}`);
+  blank.style.borderColor = 'var(--accent)';
+  eqState.selectedBlank = idx;
+  tryFillBlank();
+}
+
+function selectCoef(coef, btnEl) {
+  if (answerLocked) return;
+  document.querySelectorAll('.coef-btn').forEach(b => b.classList.remove('selected'));
+  btnEl.classList.add('selected');
+  eqState.selectedCoef = coef;
+  tryFillBlank();
+}
+
+function tryFillBlank() {
+  if (eqState.selectedBlank < 0 || eqState.selectedCoef === null) return;
+  const blank = document.getElementById(`blank${eqState.selectedBlank}`);
+  blank.textContent = eqState.selectedCoef;
+  blank.classList.add('filled');
+  eqState.userCoeffs[eqState.selectedBlank] = eqState.selectedCoef;
+  eqState.selectedBlank = -1;
+  eqState.selectedCoef = null;
+  document.querySelectorAll('.coef-btn').forEach(b => b.classList.remove('selected'));
+
+  // Check if all blanks filled
+  if (eqState.userCoeffs.every(v => v !== null)) {
+    document.getElementById('eqSubmitBtn').disabled = false;
+  }
+}
+
+function submitEquation() {
+  if (answerLocked) return;
+  answerLocked = true;
+  hideTimer();
+
+  const eq = eqState.questions[eqState.current];
+  const correct = eqState.userCoeffs.every((v, i) => v === eq.e[i]);
+  const blanks = document.querySelectorAll('.eq-blank');
+
+  blanks.forEach((b, i) => {
+    if (eqState.userCoeffs[i] === eq.e[i]) {
+      b.classList.add('correct');
+      b.style.borderColor = 'var(--success)';
+    } else {
+      b.classList.add('wrong');
+      b.style.borderColor = 'var(--danger)';
+    }
+  });
+
+  if (correct) {
+    scoreRight++;
+    updateScoreboard();
+    updateStreak(streak + 1);
+    showFeedback(true, eq.h, '');
+  } else {
+    scoreWrong++;
+    updateScoreboard();
+    updateStreak(0);
+    showFeedback(false, eq.h, eq.e, eqState.userCoeffs);
+  }
+
+  document.getElementById('quizActions').innerHTML = `
+    <button class="btn btn-secondary" onclick="quitGame()">🏠 退出</button>
+    <button class="btn btn-primary" onclick="nextEquation()">${eqState.current < eqState.total - 1 ? '下一题 →' : '查看成绩 🎉'}</button>
+  `;
+}
+
+function nextEquation() {
+  eqState.current++;
+  if (eqState.current >= eqState.total) {
+    showResult();
+  } else {
+    renderEquationQuestion();
+  }
+}
+
+function showFeedback(isCorrect, formula, name, userAnswer) {
+  const el = document.getElementById('answerFeedback');
+  const isEquation = lastMode === 'equation';
+  const msgText = isEquation
+    ? (isCorrect ? '配平正确！' : '配平错误！')
+    : (isCorrect ? '回答正确！' : '回答错误！');
+  let detail = '';
+  if (isEquation) {
+    detail = isCorrect ? '正确！' + formula : '答错了！正确系数：' + formula;
+  } else {
+    detail = fmtEl(formula) + (name ? '（' + name + '）' : '');
+    if (!isCorrect) detail += '<br>你输入了：' + (userAnswer || '(空)');
+  }
+  el.innerHTML = `
+    <div class="answer-feedback ${isCorrect ? 'correct-msg' : 'wrong-msg'}">
+      <div class="emoji">${isCorrect ? '🎉' : '😢'}</div>
+      <div class="msg">${msgText}</div>
+      <div class="detail">${detail}</div>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════
+//  MODE 3: SUBSTANCE PUZZLE (物质推断)
+// ═══════════════════════════════════════════════
+let puzzState = { round: 0, totalRounds: 0, timerId: null };
+
+function startPuzzleGame() {
+  const shuffled = shuffle([...PUZZLES]);
+  puzzState.totalRounds = 10;
+  puzzState.puzzles = shuffled.slice(0, puzzState.totalRounds);
+  puzzState.round = 0;
+  showScreen('screenQuiz');
+  document.getElementById('questionTag').textContent = '物质推断';
+  document.getElementById('progressBar').style.width = '0%';
+  renderPuzzleRound();
+}
+
+function renderPuzzleRound() {
+  answerLocked = false;
+  puzzState.round++;
+  const puzz = puzzState.puzzles[puzzState.round - 1];
+  const opts = shuffle([...puzz.opts]);
+
+  document.getElementById('questionCounter').textContent = `第 ${puzzState.round}/${puzzState.totalRounds} 题`;
+  document.getElementById('progressBar').style.width = `${((puzzState.round - 1) / puzzState.totalRounds) * 100}%`;
+  document.getElementById('questionTag').textContent = '物质推断';
+  document.getElementById('questionText').textContent = puzz.desc;
+  document.getElementById('questionSub').textContent = '';
+  document.getElementById('answerFeedback').innerHTML = '';
+  document.getElementById('extraDisplay').innerHTML = '';
+
+  const grid = document.getElementById('choicesGrid');
+  grid.className = 'choices-grid';
+  grid.style.gridTemplateColumns = '';
+  grid.innerHTML = '';
+  opts.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.className = 'choice-btn';
+    btn.textContent = opt;
+    btn.dataset.val = opt;
+    btn.onclick = () => handlePuzzleClick(opt, btn, puzz.correct);
+    grid.appendChild(btn);
+  });
+
+  document.getElementById('quizActions').innerHTML = `
+    <button class="btn btn-secondary" onclick="quitGame()">🏠 退出</button>
+  `;
+
+  // 15s countdown with visible ring
+  if (puzzState.timerId) clearTimeout(puzzState.timerId);
+  puzzState.timeLeft = 15;
+  startTimer(15, () => handlePuzzleTimeout(puzz.correct));
+}
+
+function handlePuzzleClick(chosen, btnEl, correct) {
+  if (answerLocked) return;
+  answerLocked = true;
+  hideTimer();
+  document.querySelectorAll('.choice-btn').forEach(b => b.disabled = true);
+
+  if (chosen === correct) {
+    btnEl.classList.add('correct');
+    scoreRight++;
+    updateScoreboard();
+    updateStreak(streak + 1);
+    showToast('✅ 正确！', 'success');
+  } else {
+    btnEl.classList.add('wrong');
+    document.querySelectorAll('.choice-btn').forEach(b => {
+      if (b.dataset.val === correct) b.classList.add('correct');
+    });
+    scoreWrong++;
+    updateScoreboard();
+    updateStreak(0);
+    showToast(`❌ 答案是 ${correct}`, 'error');
+  }
+
+  setTimeout(() => nextPuzzleOrEnd(), 1200);
+}
+
+function handlePuzzleTimeout(correct) {
+  if (answerLocked || !gameActive) return;
+  answerLocked = true;
+  hideTimer();
+  scoreWrong++;
+  updateScoreboard();
+  updateStreak(0);
+  document.querySelectorAll('.choice-btn').forEach(b => {
+    b.disabled = true;
+    if (b.dataset.val === correct) b.classList.add('correct');
+  });
+  showToast(`⏱️ 超时！答案是 ${correct}`, 'error');
+  setTimeout(() => nextPuzzleOrEnd(), 1200);
+}
+
+function nextPuzzleOrEnd() {
+  if (puzzState.round >= puzzState.totalRounds) {
+    showResult();
+  } else {
+    renderPuzzleRound();
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  MODE 4: SYMBOL SPEED (符号速记)
+// ═══════════════════════════════════════════════
+function startSymbolGame() {
+  const numQs = 10;
+  symbolState.totalRounds = numQs;
+  symbolState.round = 0;
+  showScreen('screenQuiz');
+  document.getElementById('questionTag').textContent = '符号速记';
+  document.getElementById('progressBar').style.width = '0%';
+  renderSymbolRound();
+}
+
+function renderSymbolRound() {
+  answerLocked = false;
+  symbolState.round++;
+
+  // Pick a compound with a simple formula
+  const compound = pick(COMPOUNDS.filter(c => c.f.length <= 5 && !c.f.includes('(')), 1)[0]
+    || COMPOUNDS[randInt(0, COMPOUNDS.length - 1)];
+  symbolState.currentCompound = compound;
+
+  document.getElementById('questionCounter').textContent = `第 ${symbolState.round}/${symbolState.totalRounds} 题`;
+  document.getElementById('progressBar').style.width = `${((symbolState.round - 1) / symbolState.totalRounds) * 100}%`;
+  document.getElementById('questionTag').textContent = '符号速记';
+  document.getElementById('questionText').textContent = '请输入该化合物的化学式：';
+  document.getElementById('questionSub').textContent = '';
+  document.getElementById('answerFeedback').innerHTML = '';
+  document.getElementById('extraDisplay').innerHTML = `
+    <div class="category-display" style="font-size:2.5rem;">${compound.n}</div>
+    <div style="color:var(--text-dim);font-size:0.85rem;margin-top:8px;">（输入化学式，如 H₂O）</div>
+  `;
+
+  const grid = document.getElementById('choicesGrid');
+  grid.className = 'symbol-input-wrap';
+  grid.innerHTML = `
+    <input type="text" class="symbol-input" id="symbolInput" placeholder="输入符号" autocomplete="off" spellcheck="false">
+    <button class="btn btn-primary" onclick="submitSymbol()">✅ 确认</button>
+  `;
+  const input = document.getElementById('symbolInput');
+  input.focus();
+  input.onkeydown = (e) => { if (e.key === 'Enter') submitSymbol(); };
+
+  document.getElementById('quizActions').innerHTML = `<button class="btn btn-secondary" onclick="quitGame()">🏠 退出</button>`;
+
+  // Timer: 12 seconds
+  symbolState.timeLeft = 12;
+  if (symbolState.timerId) clearTimeout(symbolState.timerId);
+  startTimer(12, () => submitSymbol(true));
+}
+
+function submitSymbol(timeout = false) {
+  if (answerLocked && !timeout) return;
+  if (!gameActive) return;
+  answerLocked = true;
+  hideTimer();
+  clearTimeout(symbolState.timerId);
+
+  const comp = symbolState.currentCompound || COMPOUNDS[0];
+  const inputEl = document.getElementById('symbolInput');
+  const userRaw = inputEl ? inputEl.value : '';
+  const userAnswer = normalizeFormula(userRaw.trim());
+  const correctAnswer = normalizeFormula(comp.f);
+  const isCorrect = userAnswer === correctAnswer;
+
+  if (isCorrect) {
+    if (inputEl) inputEl.classList.add('correct');
+    scoreRight++;
+    updateScoreboard();
+    updateStreak(streak + 1);
+    showFeedback(true, comp.f, comp.n);
+  } else {
+    if (inputEl) inputEl.classList.add('wrong');
+    scoreWrong++;
+    updateScoreboard();
+    updateStreak(0);
+    showFeedback(false, comp.f, comp.n, userRaw.trim() || '(空)');
+  }
+
+  document.getElementById('quizActions').innerHTML = `
+    <button class="btn btn-secondary" onclick="quitGame()">🏠 退出</button>
+    <button class="btn btn-primary" onclick="nextSymbolRound()">${symbolState.round < symbolState.totalRounds ? '下一题 →' : '查看成绩 🎉'}</button>
+  `;
+}
+
+function nextSymbolRound() {
+  if (symbolState.round >= symbolState.totalRounds) {
+    showResult();
+  } else {
+    renderSymbolRound();
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  RESULT
+// ═══════════════════════════════════════════════
+function showResult() {
+  clearAllTimers();
+  showScreen('screenResult');
+
+  if (lastMode === 'match') totalQuestions = matchState.totalPairs;
+  else if (lastMode === 'equation') totalQuestions = eqState.total;
+  else if (lastMode === 'puzzle') totalQuestions = puzzState.totalRounds;
+  else if (lastMode === 'symbol') totalQuestions = symbolState.totalRounds;
+  else totalQuestions = 10;
+
+  document.getElementById('resultCorrect').textContent = scoreRight;
+  document.getElementById('resultWrong').textContent = scoreWrong;
+  document.getElementById('resultTotal').textContent = totalQuestions;
+
+  const pct = totalQuestions > 0 ? Math.round((scoreRight / totalQuestions) * 100) : 0;
+  let emoji, title;
+  const modeNames = {match:'化合物配对',equation:'方程式配平',puzzle:'物质推断',symbol:'符号速记',table:'周期表挑战'};
+
+  // 化合物配对：显示用时，隐藏答错
+  const isMatch = lastMode === 'match';
+  if (isMatch) {
+    const elapsed = Math.round((Date.now() - matchStartTime) / 1000);
+    const mins = Math.floor(elapsed / 60);
+    const secs = elapsed % 60;
+    document.getElementById('resultScore').textContent = mins > 0 ? `${mins}分${secs}秒` : `${secs}秒`;
+    document.getElementById('resultWrong').parentElement.style.display = 'none';
+  } else {
+    document.getElementById('resultScore').textContent = pct === 0 && scoreRight === 0 ? '—' : `${pct}%`;
+    document.getElementById('resultWrong').parentElement.style.display = '';
+  }
+
+  // 化合物配对：用时评判；其他：准确率评判
+  if (isMatch) {
+    if (scoreRight === totalQuestions) { emoji = '🏆'; title = '满分！化学小天才！'; }
+    else { emoji = '🎉'; title = '完成！'; }
+  } else {
+    if (scoreRight === totalQuestions) { emoji = '🏆'; title = '满分！化学小天才！'; }
+    else if (pct >= 80) { emoji = '🥇'; title = '太棒了！'; }
+    else if (pct >= 60) { emoji = '🥈'; title = '还不错！'; }
+    else if (pct >= 40) { emoji = '🥉'; title = '继续努力！'; }
+    else { emoji = '🤔'; title = '需要加油！'; }
+  }
+
+  document.getElementById('resultEmoji').textContent = emoji;
+  document.getElementById('resultTitle').textContent = title;
+  if (isMatch) {
+    const elapsed = Math.round((Date.now() - matchStartTime) / 1000);
+    const mins = Math.floor(elapsed / 60);
+    const secs = elapsed % 60;
+    const timeStr = mins > 0 ? `${mins}分${secs}秒` : `${secs}秒`;
+    document.getElementById('resultComment').textContent = `化合物配对完成，用时 ${timeStr}，配对正确 ${scoreRight} 组。`;
+  } else {
+    document.getElementById('resultComment').textContent = `${modeNames[lastMode] || lastMode}，共 ${totalQuestions} 题，答对 ${scoreRight} 题，答错 ${scoreWrong} 题。`;
+  }
+}
+
+// Init
+window.addEventListener('load', () => {});
 </script>
 </body>
 </html>

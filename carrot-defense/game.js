@@ -363,7 +363,7 @@ window.Game = (function() {
       const s = 80 + Math.random() * 120;
       state.particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 30, life: 0.7 + Math.random() * 0.3, maxLife: 0.7, color, size: 3 + Math.random() * 5, kind: 'star' });
     }
-    for (let i = 0; i = 4; i++) {
+    for (let i = 0; i < 4; i++) {
       state.coins.push({ x, y, vy: -180 - Math.random() * 60, life: 1.2, maxLife: 1.2, value: 5, color: '#ffd700' });
     }
   }
